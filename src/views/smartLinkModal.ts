@@ -68,15 +68,15 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 			candidates = candidates.filter(
 				(f) => getCollection(f.path) === this.activeCollection
 			);
-		}
-
-		// Filter by visible collections setting
-		const visibleCollections = this.settings.visibleCollections;
-		if (visibleCollections.length > 0) {
-			candidates = candidates.filter((f) => {
-				const col = getCollection(f.path);
-				return visibleCollections.includes(col);
-			});
+		} else {
+			// Only apply visible collections filter when showing "All" (no specific collection selected)
+			const visibleCollections = this.settings.visibleCollections;
+			if (visibleCollections.length > 0) {
+				candidates = candidates.filter((f) => {
+					const col = getCollection(f.path);
+					return visibleCollections.includes(col);
+				});
+			}
 		}
 
 		// If no query, return first N results

@@ -153,13 +153,14 @@ var SmartLinkModal = class extends import_obsidian2.SuggestModal {
       candidates = candidates.filter(
         (f) => getCollection(f.path) === this.activeCollection
       );
-    }
-    const visibleCollections = this.settings.visibleCollections;
-    if (visibleCollections.length > 0) {
-      candidates = candidates.filter((f) => {
-        const col = getCollection(f.path);
-        return visibleCollections.includes(col);
-      });
+    } else {
+      const visibleCollections = this.settings.visibleCollections;
+      if (visibleCollections.length > 0) {
+        candidates = candidates.filter((f) => {
+          const col = getCollection(f.path);
+          return visibleCollections.includes(col);
+        });
+      }
     }
     if (!query.trim()) {
       return candidates.slice(0, this.settings.maxResults);
