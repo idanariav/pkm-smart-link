@@ -123,12 +123,18 @@ var SmartLinkModal = class extends import_obsidian2.SuggestModal {
   }
   onOpen() {
     this.allFiles = this.app.vault.getMarkdownFiles();
+    console.log("[Smart Link] Found markdown files:", this.allFiles.length);
+    if (this.allFiles.length === 0) {
+      console.log("[Smart Link] WARNING: No markdown files found in vault!");
+      console.log("[Smart Link] Vault root:", this.app.vault.adapter.basePath);
+    }
     for (const file of this.allFiles) {
       const cache = this.app.metadataCache.getFileCache(file);
       const composite = this.buildCompositeString(file, cache);
       this.index.set(file, composite);
     }
     this.activeCollection = this.settings.defaultCollection;
+    console.log("[Smart Link] Active collection:", this.activeCollection);
     this.pillBar = this.modalEl.createDiv({ cls: "smart-link-pill-bar" });
     this.modalEl.prepend(this.pillBar);
     this.renderPills();

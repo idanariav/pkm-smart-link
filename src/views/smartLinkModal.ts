@@ -28,6 +28,12 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 	onOpen(): void {
 		// Build composite search index once
 		this.allFiles = this.app.vault.getMarkdownFiles();
+		console.log("[Smart Link] Found markdown files:", this.allFiles.length);
+		if (this.allFiles.length === 0) {
+			console.log("[Smart Link] WARNING: No markdown files found in vault!");
+			console.log("[Smart Link] Vault root:", this.app.vault.adapter.basePath);
+		}
+
 		for (const file of this.allFiles) {
 			const cache = this.app.metadataCache.getFileCache(file);
 			const composite = this.buildCompositeString(file, cache);
@@ -36,6 +42,7 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 
 		// Set active collection to default (if configured)
 		this.activeCollection = this.settings.defaultCollection;
+		console.log("[Smart Link] Active collection:", this.activeCollection);
 
 		// Render collection pills above input
 		this.pillBar = this.modalEl.createDiv({ cls: "smart-link-pill-bar" });
