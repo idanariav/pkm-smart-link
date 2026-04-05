@@ -1,0 +1,94 @@
+/* Smart Link Modal Styles */
+
+.smart-link-modal .modal-content {
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 300px;
+	max-height: 600px;
+}
+
+.smart-link-pill-bar {
+	display: flex;
+	gap: 4px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-wrap: wrap;
+	background: var(--background-secondary);
+}
+
+.smart-link-pill {
+	padding: 4px 12px;
+	border-radius: 12px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+	transition: all 200ms ease;
+	white-space: nowrap;
+}
+
+.smart-link-pill:hover {
+	border-color: var(--text-muted);
+}
+
+.smart-link-pill--active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.smart-link-result-top {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 2px;
+}
+
+.smart-link-result-title {
+	font-weight: 600;
+	color: var(--text-normal);
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.smart-link-result-badge {
+	font-size: var(--font-ui-smaller);
+	padding: 2px 8px;
+	border-radius: 8px;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.smart-link-result-snippet {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	margin: 2px 0 0 0;
+	line-height: 1.4;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+
+/* Suggestion container overrides */
+.smart-link-modal .suggestion-container {
+	flex: 1;
+	overflow-y: auto;
+}
+
+.smart-link-modal .suggestion-item {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.smart-link-modal .suggestion-item:hover,
+.smart-link-modal .suggestion-item.is-selected {
+	background: var(--background-secondary);
+}
