@@ -53,7 +53,11 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 		super.onOpen();
 
 		// Focus input after it's ready
-		setTimeout(() => this.inputEl.focus(), 10);
+		setTimeout(() => {
+			console.log("[Smart Link] Input element exists:", !!this.inputEl);
+			console.log("[Smart Link] Input element type:", this.inputEl?.tagName);
+			this.inputEl.focus();
+		}, 10);
 	}
 
 	private buildCompositeString(file: TFile, cache: CachedMetadata | null): string {
