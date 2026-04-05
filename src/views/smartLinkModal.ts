@@ -28,11 +28,6 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 	onOpen(): void {
 		// Build composite search index once
 		this.allFiles = this.app.vault.getMarkdownFiles();
-		console.log("[Smart Link] Found markdown files:", this.allFiles.length);
-		if (this.allFiles.length === 0) {
-			console.log("[Smart Link] WARNING: No markdown files found in vault!");
-			console.log("[Smart Link] Vault root:", this.app.vault.adapter.basePath);
-		}
 
 		for (const file of this.allFiles) {
 			const cache = this.app.metadataCache.getFileCache(file);
@@ -42,7 +37,6 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 
 		// Set active collection to default (if configured)
 		this.activeCollection = this.settings.defaultCollection;
-		console.log("[Smart Link] Active collection:", this.activeCollection);
 
 		// Render collection pills above input
 		this.pillBar = this.modalEl.createDiv({ cls: "smart-link-pill-bar" });
@@ -53,26 +47,7 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 		super.onOpen();
 
 		// Focus input after it's ready
-		setTimeout(() => {
-			console.log("[Smart Link] Input element exists:", !!this.inputEl);
-			console.log("[Smart Link] Input element type:", this.inputEl?.tagName);
-
-			// Check if input is in the DOM
-			console.log("[Smart Link] Input in DOM:", document.contains(this.inputEl));
-
-			// Manually attach a listener to verify events reach the input
-			this.inputEl.addEventListener('keydown', (e) => {
-				console.log("[Smart Link] Keydown received:", e.key);
-			});
-			this.inputEl.addEventListener('input', (e) => {
-				console.log("[Smart Link] Input event received:", (e.target as HTMLInputElement).value);
-			});
-
-			this.inputEl.focus();
-
-			// Manually trigger initial suggestions
-			this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-		}, 10);
+		setTimeout(() => this.inputEl.focus(), 10);
 	}
 
 	private buildCompositeString(file: TFile, cache: CachedMetadata | null): string {
@@ -88,33 +63,25 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 
 	getSuggestions(query: string): TFile[] {
 		let candidates = [...this.allFiles];
-		console.log("[Smart Link] getSuggestions called with query:", query);
-		console.log("[Smart Link] Initial candidates:", candidates.length);
 
 		// Filter by active collection
 		if (this.activeCollection) {
 			candidates = candidates.filter(
 				(f) => getCollection(f.path) === this.activeCollection
 			);
-			console.log("[Smart Link] Filtered by active collection:", this.activeCollection, "→", candidates.length);
 		} else {
 			// Only apply visible collections filter when showing "All" (no specific collection selected)
 			const visibleCollections = this.settings.visibleCollections;
-			console.log("[Smart Link] Visible collections:", visibleCollections);
 			if (visibleCollections.length > 0) {
 				candidates = candidates.filter((f) => {
 					const col = getCollection(f.path);
 					return visibleCollections.includes(col);
 				});
-				console.log("[Smart Link] Filtered by visible collections →", candidates.length);
-			} else {
-				console.log("[Smart Link] No visible collections filter, showing all");
 			}
 		}
 
 		// If no query, return first N results
 		if (!query.trim()) {
-			console.log("[Smart Link] Empty query, returning first", this.settings.maxResults);
 			return candidates.slice(0, this.settings.maxResults);
 		}
 
@@ -130,13 +97,10 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 			}
 		}
 
-		console.log("[Smart Link] Fuzzy search matched:", scored.length, "files");
 		// Sort by score descending
 		scored.sort((a, b) => b.score - a.score);
 
-		const results = scored.slice(0, this.settings.maxResults).map((s) => s.file);
-		console.log("[Smart Link] Returning", results.length, "results");
-		return results;
+		return scored.slice(0, this.settings.maxResults).map((s) => s.file);
 	}
 
 	renderSuggestion(file: TFile, el: HTMLElement): void {
@@ -199,13 +163,13 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 				this.activeCollection = col;
 				this.renderPills();
 				// Trigger re-render of suggestions
-				this.updateSuggestions();
+				this.refreshSuggestions();
 			});
 		}
 	}
 
-	private updateSuggestions(): void {
-		// Re-trigger getSuggestions by dispatching input event asynchronously to avoid infinite loop
+	private refreshSuggestions(): void {
+		// Re-trigger getSuggestions by dispatching input event asynchronously
 		setTimeout(() => {
 			const event = new Event("input", { bubbles: true });
 			this.inputEl.dispatchEvent(event);
