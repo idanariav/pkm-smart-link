@@ -4,4 +4,3 @@ dist
 *.js.map
 .env
 .env.local
-main.js
