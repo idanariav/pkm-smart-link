@@ -232,8 +232,10 @@ var SmartLinkModal = class extends import_obsidian2.SuggestModal {
     }
   }
   updateSuggestions() {
-    const event = new Event("input", { bubbles: true });
-    this.inputEl.dispatchEvent(event);
+    setTimeout(() => {
+      const event = new Event("input", { bubbles: true });
+      this.inputEl.dispatchEvent(event);
+    }, 0);
   }
 };
 

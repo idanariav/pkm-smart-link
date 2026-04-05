@@ -175,8 +175,10 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 	}
 
 	private updateSuggestions(): void {
-		// Re-trigger getSuggestions by dispatching input event
-		const event = new Event("input", { bubbles: true });
-		this.inputEl.dispatchEvent(event);
+		// Re-trigger getSuggestions by dispatching input event asynchronously to avoid infinite loop
+		setTimeout(() => {
+			const event = new Event("input", { bubbles: true });
+			this.inputEl.dispatchEvent(event);
+		}, 0);
 	}
 }
