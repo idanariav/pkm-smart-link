@@ -69,25 +69,33 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 
 	getSuggestions(query: string): TFile[] {
 		let candidates = [...this.allFiles];
+		console.log("[Smart Link] getSuggestions called with query:", query);
+		console.log("[Smart Link] Initial candidates:", candidates.length);
 
 		// Filter by active collection
 		if (this.activeCollection) {
 			candidates = candidates.filter(
 				(f) => getCollection(f.path) === this.activeCollection
 			);
+			console.log("[Smart Link] Filtered by active collection:", this.activeCollection, "→", candidates.length);
 		} else {
 			// Only apply visible collections filter when showing "All" (no specific collection selected)
 			const visibleCollections = this.settings.visibleCollections;
+			console.log("[Smart Link] Visible collections:", visibleCollections);
 			if (visibleCollections.length > 0) {
 				candidates = candidates.filter((f) => {
 					const col = getCollection(f.path);
 					return visibleCollections.includes(col);
 				});
+				console.log("[Smart Link] Filtered by visible collections →", candidates.length);
+			} else {
+				console.log("[Smart Link] No visible collections filter, showing all");
 			}
 		}
 
 		// If no query, return first N results
 		if (!query.trim()) {
+			console.log("[Smart Link] Empty query, returning first", this.settings.maxResults);
 			return candidates.slice(0, this.settings.maxResults);
 		}
 
@@ -103,10 +111,13 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 			}
 		}
 
+		console.log("[Smart Link] Fuzzy search matched:", scored.length, "files");
 		// Sort by score descending
 		scored.sort((a, b) => b.score - a.score);
 
-		return scored.slice(0, this.settings.maxResults).map((s) => s.file);
+		const results = scored.slice(0, this.settings.maxResults).map((s) => s.file);
+		console.log("[Smart Link] Returning", results.length, "results");
+		return results;
 	}
 
 	renderSuggestion(file: TFile, el: HTMLElement): void {
