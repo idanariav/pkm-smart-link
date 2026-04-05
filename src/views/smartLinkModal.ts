@@ -56,7 +56,22 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 		setTimeout(() => {
 			console.log("[Smart Link] Input element exists:", !!this.inputEl);
 			console.log("[Smart Link] Input element type:", this.inputEl?.tagName);
+
+			// Check if input is in the DOM
+			console.log("[Smart Link] Input in DOM:", document.contains(this.inputEl));
+
+			// Manually attach a listener to verify events reach the input
+			this.inputEl.addEventListener('keydown', (e) => {
+				console.log("[Smart Link] Keydown received:", e.key);
+			});
+			this.inputEl.addEventListener('input', (e) => {
+				console.log("[Smart Link] Input event received:", (e.target as HTMLInputElement).value);
+			});
+
 			this.inputEl.focus();
+
+			// Manually trigger initial suggestions
+			this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
 		}, 10);
 	}
 
