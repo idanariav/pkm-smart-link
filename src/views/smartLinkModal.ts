@@ -34,6 +34,9 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 			this.index.set(file, composite);
 		}
 
+		// Set active collection to default (if configured)
+		this.activeCollection = this.settings.defaultCollection;
+
 		// Render collection pills above input
 		this.pillBar = this.modalEl.createDiv({ cls: "smart-link-pill-bar" });
 		this.modalEl.prepend(this.pillBar);
@@ -68,11 +71,11 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 		}
 
 		// Filter by visible collections setting
-		const hiddenCollections = this.settings.visibleCollections;
-		if (hiddenCollections.length > 0) {
+		const visibleCollections = this.settings.visibleCollections;
+		if (visibleCollections.length > 0) {
 			candidates = candidates.filter((f) => {
 				const col = getCollection(f.path);
-				return !hiddenCollections.includes(col);
+				return visibleCollections.includes(col);
 			});
 		}
 

@@ -29,20 +29,36 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 					})
 			);
 
+		new Setting(containerEl)
+			.setName("Default collection")
+			.setDesc("Collection to show by default when opening the picker (leave empty for 'All')")
+			.addDropdown((dropdown) => {
+				dropdown.addOption("", "All");
+				for (const collection of ALL_COLLECTIONS) {
+					dropdown.addOption(collection, collection);
+				}
+				dropdown
+					.setValue(this.plugin.settings.defaultCollection)
+					.onChange(async (value) => {
+						this.plugin.settings.defaultCollection = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
 		containerEl.createEl("h3", { text: "Visible Collections" });
-		containerEl.createEl("p", { text: "Uncheck to hide collections from the filter pills" });
+		containerEl.createEl("p", { text: "Check to show collections in the filter pills" });
 
 		for (const collection of ALL_COLLECTIONS) {
 			new Setting(containerEl)
 				.setName(collection)
 				.addToggle((toggle) =>
 					toggle
-						.setValue(!this.plugin.settings.visibleCollections.includes(collection))
+						.setValue(this.plugin.settings.visibleCollections.includes(collection))
 						.onChange(async (value) => {
 							const idx = this.plugin.settings.visibleCollections.indexOf(collection);
-							if (!value && idx === -1) {
+							if (value && idx === -1) {
 								this.plugin.settings.visibleCollections.push(collection);
-							} else if (value && idx !== -1) {
+							} else if (!value && idx !== -1) {
 								this.plugin.settings.visibleCollections.splice(idx, 1);
 							}
 							await this.plugin.saveSettings();
