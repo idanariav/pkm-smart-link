@@ -3,6 +3,7 @@ export interface SmartLinkSettings {
 	maxResults: number;
 	defaultCollection: string; // empty = "All"
 	showUncreatedLinks: boolean;
+	hideImageLinks: boolean;
 }
 
 export const DEFAULT_SETTINGS: SmartLinkSettings = {
@@ -10,4 +11,5 @@ export const DEFAULT_SETTINGS: SmartLinkSettings = {
 	maxResults: 50,
 	defaultCollection: "",
 	showUncreatedLinks: true,
+	hideImageLinks: true,
 };

@@ -57,6 +57,18 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 					})
 			);
 
+		new Setting(containerEl)
+			.setName("Hide image links")
+			.setDesc("Exclude uncreated links ending with .png, .jpg, or .webp")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.hideImageLinks)
+					.onChange(async (value) => {
+						this.plugin.settings.hideImageLinks = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		containerEl.createEl("h3", { text: "Visible Collections" });
 		containerEl.createEl("p", { text: "Check to show collections in the filter pills" });
 

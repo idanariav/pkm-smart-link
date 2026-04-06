@@ -41,10 +41,12 @@ export class SmartLinkModal extends SuggestModal<SuggestionItem> {
 
 		// Collect uncreated (unresolved) links
 		if (this.settings.showUncreatedLinks) {
+			const imageExts = /\.(png|jpg|webp)$/i;
 			const seen = new Set<string>();
 			const unresolved = this.app.metadataCache.unresolvedLinks;
 			for (const links of Object.values(unresolved)) {
 				for (const linkName of Object.keys(links)) {
+					if (this.settings.hideImageLinks && imageExts.test(linkName)) continue;
 					seen.add(linkName);
 				}
 			}
