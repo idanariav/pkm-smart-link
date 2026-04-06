@@ -45,6 +45,18 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 					});
 			});
 
+		new Setting(containerEl)
+			.setName("Show uncreated links")
+			.setDesc("Include links that don't have a corresponding file yet")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showUncreatedLinks)
+					.onChange(async (value) => {
+						this.plugin.settings.showUncreatedLinks = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		containerEl.createEl("h3", { text: "Visible Collections" });
 		containerEl.createEl("p", { text: "Check to show collections in the filter pills" });
 

@@ -5,18 +5,22 @@ import {
 	TFile,
 	CachedMetadata,
 	prepareFuzzySearch,
-	SearchResult,
 } from "obsidian";
 import { SmartLinkSettings } from "../settings";
 import { getCollection, COLLECTION_MAP } from "../constants";
 
-export class SmartLinkModal extends SuggestModal<TFile> {
+type SuggestionItem =
+	| { type: "file"; file: TFile }
+	| { type: "uncreated"; name: string };
+
+export class SmartLinkModal extends SuggestModal<SuggestionItem> {
 	private editor: Editor;
 	private settings: SmartLinkSettings;
 	private activeCollection = "";
 	private index: Map<TFile, string> = new Map();
 	private pillBar: HTMLElement | null = null;
 	private allFiles: TFile[] = [];
+	private uncreatedLinks: string[] = [];
 
 	constructor(app: App, editor: Editor, settings: SmartLinkSettings) {
 		super(app);
@@ -33,6 +37,18 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 			const cache = this.app.metadataCache.getFileCache(file);
 			const composite = this.buildCompositeString(file, cache);
 			this.index.set(file, composite);
+		}
+
+		// Collect uncreated (unresolved) links
+		if (this.settings.showUncreatedLinks) {
+			const seen = new Set<string>();
+			const unresolved = this.app.metadataCache.unresolvedLinks;
+			for (const links of Object.values(unresolved)) {
+				for (const linkName of Object.keys(links)) {
+					seen.add(linkName);
+				}
+			}
+			this.uncreatedLinks = Array.from(seen).sort();
 		}
 
 		// Set active collection to default (if configured)
@@ -61,7 +77,16 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 		return parts.filter(Boolean).join(" | ");
 	}
 
-	getSuggestions(query: string): TFile[] {
+	private getBacklinkCount(file: TFile): number {
+		const resolved = this.app.metadataCache.resolvedLinks;
+		let count = 0;
+		for (const links of Object.values(resolved)) {
+			if (file.path in links) count++;
+		}
+		return count;
+	}
+
+	getSuggestions(query: string): SuggestionItem[] {
 		let candidates = [...this.allFiles];
 
 		// Filter by active collection
@@ -80,33 +105,67 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 			}
 		}
 
-		// If no query, return first N results
+		// If no query, return first N results (files first, then uncreated)
 		if (!query.trim()) {
-			return candidates.slice(0, this.settings.maxResults);
+			const fileItems: SuggestionItem[] = candidates
+				.slice(0, this.settings.maxResults)
+				.map((f) => ({ type: "file", file: f }));
+
+			if (this.settings.showUncreatedLinks) {
+				const remaining = this.settings.maxResults - fileItems.length;
+				const uncreatedItems: SuggestionItem[] = this.uncreatedLinks
+					.slice(0, remaining)
+					.map((name) => ({ type: "uncreated", name }));
+				return [...fileItems, ...uncreatedItems];
+			}
+			return fileItems;
 		}
 
-		// Fuzzy search and score
+		// Fuzzy search files
 		const matcher = prepareFuzzySearch(query);
-		const scored: { file: TFile; score: number }[] = [];
+		const scored: { item: SuggestionItem; score: number }[] = [];
 
 		for (const file of candidates) {
 			const composite = this.index.get(file) ?? file.basename;
 			const result = matcher(composite);
 			if (result) {
-				scored.push({ file, score: result.score });
+				scored.push({ item: { type: "file", file }, score: result.score });
+			}
+		}
+
+		// Fuzzy search uncreated links (not filtered by collection)
+		if (this.settings.showUncreatedLinks) {
+			for (const name of this.uncreatedLinks) {
+				const result = matcher(name);
+				if (result) {
+					scored.push({ item: { type: "uncreated", name }, score: result.score });
+				}
 			}
 		}
 
 		// Sort by score descending
 		scored.sort((a, b) => b.score - a.score);
 
-		return scored.slice(0, this.settings.maxResults).map((s) => s.file);
+		return scored.slice(0, this.settings.maxResults).map((s) => s.item);
 	}
 
-	renderSuggestion(file: TFile, el: HTMLElement): void {
-		const collection = getCollection(file.path);
+	renderSuggestion(item: SuggestionItem, el: HTMLElement): void {
+		if (item.type === "uncreated") {
+			el.addClass("smart-link-result--uncreated");
+			const topLine = el.createDiv({ cls: "smart-link-result-top" });
+			topLine.createEl("span", { text: item.name, cls: "smart-link-result-title" });
+			topLine.createEl("span", {
+				text: "uncreated",
+				cls: "smart-link-result-badge smart-link-result-badge--uncreated",
+			});
+			return;
+		}
 
-		// Top line: title + collection badge
+		const { file } = item;
+		const collection = getCollection(file.path);
+		const backlinks = this.getBacklinkCount(file);
+
+		// Top line: title + collection badge + backlink count
 		const topLine = el.createDiv({ cls: "smart-link-result-top" });
 		topLine.createEl("span", { text: file.basename, cls: "smart-link-result-title" });
 
@@ -116,6 +175,11 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 				cls: "smart-link-result-badge",
 			});
 		}
+
+		topLine.createEl("span", {
+			text: `↩ ${backlinks}`,
+			cls: "smart-link-result-backlinks",
+		});
 
 		// Description snippet if available
 		const cache = this.app.metadataCache.getFileCache(file);
@@ -128,12 +192,15 @@ export class SmartLinkModal extends SuggestModal<TFile> {
 		}
 	}
 
-	onChooseSuggestion(file: TFile, evt: MouseEvent | KeyboardEvent): void {
-		// Use frontmatter title if available, otherwise basename
-		const cache = this.app.metadataCache.getFileCache(file);
-		const title = String(cache?.frontmatter?.title ?? file.basename);
-
-		this.editor.replaceSelection(`[[${title}]]`);
+	onChooseSuggestion(item: SuggestionItem, evt: MouseEvent | KeyboardEvent): void {
+		const name =
+			item.type === "file"
+				? String(
+					this.app.metadataCache.getFileCache(item.file)?.frontmatter?.title ??
+					item.file.basename
+				)
+				: item.name;
+		this.editor.replaceSelection(`[[${name}]]`);
 	}
 
 	private renderPills(): void {
