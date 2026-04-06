@@ -14,7 +14,7 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Smart Link Settings" });
+		new Setting(containerEl).setName("Smart Link Settings").setHeading();
 
 		new Setting(containerEl)
 			.setName("Max results")

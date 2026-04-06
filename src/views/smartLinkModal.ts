@@ -227,7 +227,7 @@ export class SmartLinkModal extends SuggestModal<SuggestionItem> {
 					(isActive ? " smart-link-pill--active" : ""),
 			});
 
-			btn.addEventListener("click", (e) => {
+			btn.addEventListener("click", (e: MouseEvent) => {
 				e.preventDefault();
 				this.activeCollection = col;
 				this.renderPills();
