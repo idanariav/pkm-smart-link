@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,3 +31,5 @@ jobs:
         with:
           artifacts: "main.js,manifest.json,styles.css,pkm-smart-link.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: true
+          makeLatest: true
