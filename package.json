@@ -1,6 +1,6 @@
 {
 	"name": "pkm-smart-link",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Filtered, semantically ranked link insertion for Obsidian",
 	"main": "main.js",
 	"scripts": {
