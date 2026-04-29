@@ -1,7 +1,7 @@
 {
 	"id": "pkm-smart-link",
 	"name": "PKM Smart Link",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.0.0",
 	"description": "Filtered, semantically ranked link insertion using Obsidian's built-in search.",
 	"author": "Idan Ariav",
