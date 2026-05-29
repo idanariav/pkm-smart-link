@@ -30,6 +30,21 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName("Override [[ link suggestions")
+			.setDesc(
+				"Show the Smart Link popup inline when typing [[ instead of Obsidian's default link suggester"
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.overrideNativeLinkSuggest)
+					.onChange(async (value) => {
+						this.plugin.settings.overrideNativeLinkSuggest = value;
+						await this.plugin.saveSettings();
+						this.plugin.applyNativeOverride();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName("Default collection")
 			.setDesc("Collection to show by default when opening the picker (leave empty for 'All')")
 			.addDropdown((dropdown) => {
