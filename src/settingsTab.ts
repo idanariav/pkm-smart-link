@@ -30,17 +30,14 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Override [[ link suggestions")
-			.setDesc(
-				"Show the Smart Link popup inline when typing [[ instead of Obsidian's default link suggester"
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.overrideNativeLinkSuggest)
+			.setName("Trigger prefix")
+			.setDesc("Type this snippet to open the Smart Link picker inline (default: s[)")
+			.addText((text) =>
+				text
+					.setValue(this.plugin.settings.triggerPrefix)
 					.onChange(async (value) => {
-						this.plugin.settings.overrideNativeLinkSuggest = value;
+						this.plugin.settings.triggerPrefix = value;
 						await this.plugin.saveSettings();
-						this.plugin.applyNativeOverride();
 					})
 			);
 

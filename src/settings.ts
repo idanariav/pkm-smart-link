@@ -4,7 +4,7 @@ export interface SmartLinkSettings {
 	defaultCollection: string; // empty = "All"
 	showUncreatedLinks: boolean;
 	hideImageLinks: boolean;
-	overrideNativeLinkSuggest: boolean; // replace Obsidian's [[ popup with the inline Smart Link popup
+	triggerPrefix: string; // snippet that opens the inline Smart Link popup
 }
 
 export const DEFAULT_SETTINGS: SmartLinkSettings = {
@@ -13,5 +13,5 @@ export const DEFAULT_SETTINGS: SmartLinkSettings = {
 	defaultCollection: "",
 	showUncreatedLinks: true,
 	hideImageLinks: true,
-	overrideNativeLinkSuggest: true,
+	triggerPrefix: "s[",
 };

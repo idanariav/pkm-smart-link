@@ -31,8 +31,15 @@ export class SmartLinkSuggest extends EditorSuggest<SuggestionItem> {
 		_file: TFile | null
 	): EditorSuggestTriggerInfo | null {
 		const beforeCursor = editor.getLine(cursor.line).slice(0, cursor.ch);
-		// Match an open, unclosed `[[` ending at the cursor.
-		const match = beforeCursor.match(/\[\[([^\]\n]*)$/);
+		// Match the configurable trigger prefix followed by the query, ending at
+		// the cursor. An empty prefix would match everything, so bail out.
+		const prefix = this.settings.triggerPrefix;
+		if (!prefix) {
+			this.isOpen = false;
+			return null;
+		}
+		const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const match = beforeCursor.match(new RegExp(escaped + "([^\\]\\n]*)$"));
 		if (!match) {
 			this.isOpen = false;
 			return null;
@@ -66,12 +73,17 @@ export class SmartLinkSuggest extends EditorSuggest<SuggestionItem> {
 		const editor = context.editor;
 		const replacement = `[[${this.engine.getLinkText(item)}]]`;
 
-		// Overwrite the auto-paired closing `]]` if it follows the cursor,
-		// so we don't end up with `[[name]]]]`.
+		// Overwrite any auto-paired closing brackets that follow the cursor so we
+		// don't leave stray `]`s behind. A prefix ending in `[` auto-pairs one `]`
+		// per trailing `[`, so consume up to that many consecutive `]`.
 		let end = context.end;
-		const after = editor.getLine(context.end.line).slice(context.end.ch, context.end.ch + 2);
-		if (after === "]]") {
-			end = { line: context.end.line, ch: context.end.ch + 2 };
+		const trailingOpen = this.settings.triggerPrefix.match(/\[+$/)?.[0].length ?? 0;
+		if (trailingOpen > 0) {
+			const after = editor.getLine(context.end.line).slice(context.end.ch, context.end.ch + trailingOpen);
+			const closers = after.match(/^\]+/)?.[0].length ?? 0;
+			if (closers > 0) {
+				end = { line: context.end.line, ch: context.end.ch + closers };
+			}
 		}
 
 		editor.replaceRange(replacement, context.start, end);

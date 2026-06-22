@@ -37,7 +37,7 @@ var DEFAULT_SETTINGS = {
   defaultCollection: "",
   showUncreatedLinks: true,
   hideImageLinks: true,
-  overrideNativeLinkSuggest: true
+  triggerPrefix: "s["
 };
 
 // src/settingsTab.ts
@@ -83,13 +83,10 @@ var SmartLinkSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Override [[ link suggestions").setDesc(
-      "Show the Smart Link popup inline when typing [[ instead of Obsidian's default link suggester"
-    ).addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.overrideNativeLinkSuggest).onChange(async (value) => {
-        this.plugin.settings.overrideNativeLinkSuggest = value;
+    new import_obsidian.Setting(containerEl).setName("Trigger prefix").setDesc("Type this snippet to open the Smart Link picker inline (default: s[)").addText(
+      (text) => text.setValue(this.plugin.settings.triggerPrefix).onChange(async (value) => {
+        this.plugin.settings.triggerPrefix = value;
         await this.plugin.saveSettings();
-        this.plugin.applyNativeOverride();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Default collection").setDesc("Collection to show by default when opening the picker (leave empty for 'All')").addDropdown((dropdown) => {
@@ -349,7 +346,13 @@ var SmartLinkSuggest = class extends import_obsidian4.EditorSuggest {
   onTrigger(cursor, editor, _file) {
     var _a;
     const beforeCursor = editor.getLine(cursor.line).slice(0, cursor.ch);
-    const match = beforeCursor.match(/\[\[([^\]\n]*)$/);
+    const prefix = this.settings.triggerPrefix;
+    if (!prefix) {
+      this.isOpen = false;
+      return null;
+    }
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = beforeCursor.match(new RegExp(escaped + "([^\\]\\n]*)$"));
     if (!match) {
       this.isOpen = false;
       return null;
@@ -371,15 +374,20 @@ var SmartLinkSuggest = class extends import_obsidian4.EditorSuggest {
     this.engine.renderItem(item, el);
   }
   selectSuggestion(item, _evt) {
+    var _a, _b, _c, _d;
     const context = this.context;
     if (!context)
       return;
     const editor = context.editor;
     const replacement = `[[${this.engine.getLinkText(item)}]]`;
     let end = context.end;
-    const after = editor.getLine(context.end.line).slice(context.end.ch, context.end.ch + 2);
-    if (after === "]]") {
-      end = { line: context.end.line, ch: context.end.ch + 2 };
+    const trailingOpen = (_b = (_a = this.settings.triggerPrefix.match(/\[+$/)) == null ? void 0 : _a[0].length) != null ? _b : 0;
+    if (trailingOpen > 0) {
+      const after = editor.getLine(context.end.line).slice(context.end.ch, context.end.ch + trailingOpen);
+      const closers = (_d = (_c = after.match(/^\]+/)) == null ? void 0 : _c[0].length) != null ? _d : 0;
+      if (closers > 0) {
+        end = { line: context.end.line, ch: context.end.ch + closers };
+      }
     }
     editor.replaceRange(replacement, context.start, end);
     editor.setCursor({
@@ -396,15 +404,12 @@ var SmartLinkPlugin = class extends import_obsidian5.Plugin {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
     this.suggest = null;
-    // The native link suggester we removed, kept so we can restore it.
-    this.removedNativeSuggest = null;
   }
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new SmartLinkSettingTab(this.app, this));
     this.suggest = new SmartLinkSuggest(this.app, this.settings);
     this.registerEditorSuggest(this.suggest);
-    this.applyNativeOverride();
     this.addCommand({
       id: "smart-link-insert",
       name: "Insert Smart Link",
@@ -412,50 +417,6 @@ var SmartLinkPlugin = class extends import_obsidian5.Plugin {
         new SmartLinkModal(this.app, editor, this.settings).open();
       }
     });
-  }
-  onunload() {
-    this.restoreNativeSuggest();
-  }
-  /** Enable or disable the native [[ override based on the current setting. */
-  applyNativeOverride() {
-    if (this.settings.overrideNativeLinkSuggest) {
-      this.removeNativeSuggest();
-    } else {
-      this.restoreNativeSuggest();
-    }
-  }
-  // Obsidian's built-in link suggester is the first entry of the (private,
-  // untyped) editorSuggest.suggests array. We remove/re-insert it directly.
-  getSuggests() {
-    var _a;
-    const manager = this.app.workspace.editorSuggest;
-    return (_a = manager == null ? void 0 : manager.suggests) != null ? _a : null;
-  }
-  removeNativeSuggest() {
-    if (this.removedNativeSuggest)
-      return;
-    try {
-      const suggests = this.getSuggests();
-      if (suggests && suggests.length > 0) {
-        this.removedNativeSuggest = suggests.splice(0, 1)[0];
-      }
-    } catch (e) {
-      console.error("pkm-smart-link: failed to override native link suggester", e);
-    }
-  }
-  restoreNativeSuggest() {
-    if (!this.removedNativeSuggest)
-      return;
-    try {
-      const suggests = this.getSuggests();
-      if (suggests && !suggests.includes(this.removedNativeSuggest)) {
-        suggests.unshift(this.removedNativeSuggest);
-      }
-    } catch (e) {
-      console.error("pkm-smart-link: failed to restore native link suggester", e);
-    } finally {
-      this.removedNativeSuggest = null;
-    }
   }
   async loadSettings() {
     const loaded = await this.loadData();
