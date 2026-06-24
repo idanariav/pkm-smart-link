@@ -139,16 +139,28 @@ var LinkEngine = class {
     this.index = /* @__PURE__ */ new Map();
     this.allFiles = [];
     this.uncreatedLinks = [];
+    this.backlinkCounts = /* @__PURE__ */ new Map();
     this.app = app;
     this.settings = settings;
   }
   /** Build the composite search index and uncreated-links list. Call once per open. */
   buildIndex() {
+    var _a;
     this.allFiles = this.app.vault.getMarkdownFiles();
     this.index.clear();
     for (const file of this.allFiles) {
       const cache = this.app.metadataCache.getFileCache(file);
       this.index.set(file, this.buildCompositeString(file, cache));
+    }
+    this.backlinkCounts.clear();
+    const resolved = this.app.metadataCache.resolvedLinks;
+    for (const links of Object.values(resolved)) {
+      for (const targetPath of Object.keys(links)) {
+        this.backlinkCounts.set(
+          targetPath,
+          ((_a = this.backlinkCounts.get(targetPath)) != null ? _a : 0) + 1
+        );
+      }
     }
     this.uncreatedLinks = [];
     if (this.settings.showUncreatedLinks) {
@@ -177,13 +189,8 @@ var LinkEngine = class {
     return parts.filter(Boolean).join(" | ");
   }
   getBacklinkCount(file) {
-    const resolved = this.app.metadataCache.resolvedLinks;
-    let count = 0;
-    for (const links of Object.values(resolved)) {
-      if (file.path in links)
-        count++;
-    }
-    return count;
+    var _a;
+    return (_a = this.backlinkCounts.get(file.path)) != null ? _a : 0;
   }
   getSuggestions(query, activeCollection) {
     var _a;
@@ -339,28 +346,27 @@ var import_obsidian4 = require("obsidian");
 var SmartLinkSuggest = class extends import_obsidian4.EditorSuggest {
   constructor(app, settings) {
     super(app);
-    this.isOpen = false;
     this.settings = settings;
     this.engine = new LinkEngine(app, settings);
+  }
+  /**
+   * Rebuild the search index off the keystroke hot path. Running buildIndex
+   * synchronously inside onTrigger blocked the main thread long enough to
+   * blur the editor, which closed the popup before it could attach.
+   */
+  refreshIndex() {
+    this.engine.buildIndex();
   }
   onTrigger(cursor, editor, _file) {
     var _a;
     const beforeCursor = editor.getLine(cursor.line).slice(0, cursor.ch);
     const prefix = this.settings.triggerPrefix;
-    if (!prefix) {
-      this.isOpen = false;
+    if (!prefix)
       return null;
-    }
     const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = beforeCursor.match(new RegExp(escaped + "([^\\]\\n]*)$"));
-    if (!match) {
-      this.isOpen = false;
+    const match = beforeCursor.match(new RegExp("(?<!\\w)" + escaped + "([^\\]\\n]*)$"));
+    if (!match)
       return null;
-    }
-    if (!this.isOpen) {
-      this.engine.buildIndex();
-      this.isOpen = true;
-    }
     return {
       start: { line: cursor.line, ch: (_a = match.index) != null ? _a : 0 },
       end: cursor,
@@ -410,6 +416,19 @@ var SmartLinkPlugin = class extends import_obsidian5.Plugin {
     this.addSettingTab(new SmartLinkSettingTab(this.app, this));
     this.suggest = new SmartLinkSuggest(this.app, this.settings);
     this.registerEditorSuggest(this.suggest);
+    this.app.workspace.onLayoutReady(() => {
+      var _a;
+      return (_a = this.suggest) == null ? void 0 : _a.refreshIndex();
+    });
+    this.registerEvent(
+      this.app.metadataCache.on(
+        "resolved",
+        (0, import_obsidian5.debounce)(() => {
+          var _a;
+          return (_a = this.suggest) == null ? void 0 : _a.refreshIndex();
+        }, 2e3, true)
+      )
+    );
     this.addCommand({
       id: "smart-link-insert",
       name: "Insert Smart Link",

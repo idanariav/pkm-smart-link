@@ -17,12 +17,20 @@ import { LinkEngine, SuggestionItem } from "../linkEngine";
 export class SmartLinkSuggest extends EditorSuggest<SuggestionItem> {
 	private settings: SmartLinkSettings;
 	private engine: LinkEngine;
-	private isOpen = false;
 
 	constructor(app: App, settings: SmartLinkSettings) {
 		super(app);
 		this.settings = settings;
 		this.engine = new LinkEngine(app, settings);
+	}
+
+	/**
+	 * Rebuild the search index off the keystroke hot path. Running buildIndex
+	 * synchronously inside onTrigger blocked the main thread long enough to
+	 * blur the editor, which closed the popup before it could attach.
+	 */
+	refreshIndex(): void {
+		this.engine.buildIndex();
 	}
 
 	onTrigger(
@@ -34,22 +42,13 @@ export class SmartLinkSuggest extends EditorSuggest<SuggestionItem> {
 		// Match the configurable trigger prefix followed by the query, ending at
 		// the cursor. An empty prefix would match everything, so bail out.
 		const prefix = this.settings.triggerPrefix;
-		if (!prefix) {
-			this.isOpen = false;
-			return null;
-		}
-		const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		const match = beforeCursor.match(new RegExp(escaped + "([^\\]\\n]*)$"));
-		if (!match) {
-			this.isOpen = false;
-			return null;
-		}
+		if (!prefix) return null;
 
-		// Rebuild the index once when the popup opens (not on every keystroke).
-		if (!this.isOpen) {
-			this.engine.buildIndex();
-			this.isOpen = true;
-		}
+		const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		// Only trigger at a word boundary so the prefix doesn't fire mid-word:
+		// "(s[" matches (preceded by a non-word char) but "this[" does not.
+		const match = beforeCursor.match(new RegExp("(?<!\\w)" + escaped + "([^\\]\\n]*)$"));
+		if (!match) return null;
 
 		return {
 			start: { line: cursor.line, ch: match.index ?? 0 },

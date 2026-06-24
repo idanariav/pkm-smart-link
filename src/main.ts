@@ -1,4 +1,4 @@
-import { Plugin, Editor } from "obsidian";
+import { Plugin, Editor, debounce } from "obsidian";
 import { SmartLinkSettings, DEFAULT_SETTINGS } from "./settings";
 import { SmartLinkSettingTab } from "./settingsTab";
 import { SmartLinkModal } from "./views/smartLinkModal";
@@ -15,6 +15,17 @@ export default class SmartLinkPlugin extends Plugin {
 		// Inline [[ suggester
 		this.suggest = new SmartLinkSuggest(this.app, this.settings);
 		this.registerEditorSuggest(this.suggest);
+
+		// Build the search index off the keystroke hot path: once on startup,
+		// then refreshed (debounced) whenever the metadata cache settles. Doing
+		// this inside onTrigger blocked the main thread and closed the popup.
+		this.app.workspace.onLayoutReady(() => this.suggest?.refreshIndex());
+		this.registerEvent(
+			this.app.metadataCache.on(
+				"resolved",
+				debounce(() => this.suggest?.refreshIndex(), 2000, true)
+			)
+		);
 
 		// Command (modal)
 		this.addCommand({

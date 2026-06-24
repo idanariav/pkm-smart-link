@@ -16,6 +16,7 @@ export class LinkEngine {
 	private index: Map<TFile, string> = new Map();
 	private allFiles: TFile[] = [];
 	private uncreatedLinks: string[] = [];
+	private backlinkCounts: Map<string, number> = new Map();
 
 	constructor(app: App, settings: SmartLinkSettings) {
 		this.app = app;
@@ -30,6 +31,19 @@ export class LinkEngine {
 		for (const file of this.allFiles) {
 			const cache = this.app.metadataCache.getFileCache(file);
 			this.index.set(file, this.buildCompositeString(file, cache));
+		}
+
+		// Precompute backlink counts once (instead of rescanning resolvedLinks
+		// per row at render time, which is O(files) per suggestion).
+		this.backlinkCounts.clear();
+		const resolved = this.app.metadataCache.resolvedLinks;
+		for (const links of Object.values(resolved)) {
+			for (const targetPath of Object.keys(links)) {
+				this.backlinkCounts.set(
+					targetPath,
+					(this.backlinkCounts.get(targetPath) ?? 0) + 1
+				);
+			}
 		}
 
 		this.uncreatedLinks = [];
@@ -59,12 +73,7 @@ export class LinkEngine {
 	}
 
 	getBacklinkCount(file: TFile): number {
-		const resolved = this.app.metadataCache.resolvedLinks;
-		let count = 0;
-		for (const links of Object.values(resolved)) {
-			if (file.path in links) count++;
-		}
-		return count;
+		return this.backlinkCounts.get(file.path) ?? 0;
 	}
 
 	getSuggestions(query: string, activeCollection: string): SuggestionItem[] {
