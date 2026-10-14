@@ -33,6 +33,13 @@ export class SmartLinkSuggest extends EditorSuggest<SuggestionItem> {
 		this.engine.buildIndex();
 	}
 
+	/** Ranked result labels for a query. Used by eval/run_eval.py via `obsidian eval`. */
+	search(query: string, collection = ""): string[] {
+		return this.engine
+			.getSuggestions(query, collection)
+			.map((i) => (i.type === "file" ? i.file.basename : i.name));
+	}
+
 	onTrigger(
 		cursor: EditorPosition,
 		editor: Editor,

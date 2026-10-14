@@ -1,10 +1,35 @@
-import { App, TFile, CachedMetadata, prepareFuzzySearch } from "obsidian";
+import { App, TFile, CachedMetadata } from "obsidian";
 import { SmartLinkSettings } from "./settings";
 import { getCollection } from "./constants";
 
 export type SuggestionItem =
 	| { type: "file"; file: TFile }
 	| { type: "uncreated"; name: string };
+
+interface IndexedFields {
+	title: string[];
+	aliases: string[];
+	description: string[];
+}
+
+const FIELD_WEIGHT = { title: 3, aliases: 2, description: 1 };
+const BACKLINK_WEIGHT = 0.15;
+const SCORE_FLOOR_RATIO = 0.4;
+const COLLECTION_BOOST: Record<string, number> = { concepts: 1.2, maps: 1.2 };
+
+const tokenize = (text: string): string[] =>
+	text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/** Crude stem: words longer than 5 chars compare on their first 5 letters. */
+const stem = (w: string): string => (w.length > 5 ? w.slice(0, 5) : w);
+
+/** True if query token matches a word by prefix, or by shared stem for tokens >= 4 chars. */
+function matchesTokens(token: string, words: string[]): boolean {
+	const ts = stem(token);
+	return words.some(
+		(w) => w.startsWith(token) || (token.length >= 4 && w.length >= 4 && stem(w) === ts)
+	);
+}
 
 /**
  * UI-agnostic engine shared by the SmartLink modal and the inline EditorSuggest.
@@ -13,7 +38,7 @@ export type SuggestionItem =
 export class LinkEngine {
 	private app: App;
 	private settings: SmartLinkSettings;
-	private index: Map<TFile, string> = new Map();
+	private index: Map<TFile, IndexedFields> = new Map();
 	private allFiles: TFile[] = [];
 	private uncreatedLinks: string[] = [];
 	private backlinkCounts: Map<string, number> = new Map();
@@ -30,7 +55,7 @@ export class LinkEngine {
 
 		for (const file of this.allFiles) {
 			const cache = this.app.metadataCache.getFileCache(file);
-			this.index.set(file, this.buildCompositeString(file, cache));
+			this.index.set(file, this.buildFields(file, cache));
 		}
 
 		// Precompute backlink counts once (instead of rescanning resolvedLinks
@@ -61,15 +86,15 @@ export class LinkEngine {
 		}
 	}
 
-	private buildCompositeString(file: TFile, cache: CachedMetadata | null): string {
+	private buildFields(file: TFile, cache: CachedMetadata | null): IndexedFields {
 		const fm = cache?.frontmatter ?? {};
-		const parts = [
-			file.basename,
-			String(fm.title ?? "").trim(),
-			Array.isArray(fm.aliases) ? fm.aliases.join(" ") : String(fm.aliases ?? "").trim(),
-			String(fm.description ?? "").trim(),
-		];
-		return parts.filter(Boolean).join(" | ");
+		const aliases = Array.isArray(fm.aliases) ? fm.aliases.join(" ") : String(fm.aliases ?? "");
+		const title = [file.basename, String(fm.title ?? "")].join(" ");
+		return {
+			title: tokenize(title),
+			aliases: tokenize(aliases),
+			description: tokenize(String(fm.description ?? "")),
+		};
 	}
 
 	getBacklinkCount(file: TFile): number {
@@ -110,31 +135,63 @@ export class LinkEngine {
 			return fileItems;
 		}
 
-		// Fuzzy search files
-		const matcher = prepareFuzzySearch(query);
+		const tokens = tokenize(query);
 		const scored: { item: SuggestionItem; score: number }[] = [];
 
 		for (const file of candidates) {
-			const composite = this.index.get(file) ?? file.basename;
-			const result = matcher(composite);
-			if (result) {
-				scored.push({ item: { type: "file", file }, score: result.score });
-			}
+			const fields = this.index.get(file);
+			if (!fields) continue;
+			const base = this.scoreFields(tokens, fields);
+			if (base <= 0) continue;
+			const backlinkBoost = 1 + Math.log1p(this.getBacklinkCount(file)) * BACKLINK_WEIGHT;
+			const collectionBoost = COLLECTION_BOOST[getCollection(file.path)] ?? 1;
+			scored.push({
+				item: { type: "file", file },
+				score: base * backlinkBoost * collectionBoost,
+			});
 		}
 
-		// Fuzzy search uncreated links (not filtered by collection)
+		// Uncreated links have only a name: score them as a title-only note
 		if (this.settings.showUncreatedLinks) {
 			for (const name of this.uncreatedLinks) {
-				const result = matcher(name);
-				if (result) {
-					scored.push({ item: { type: "uncreated", name }, score: result.score });
-				}
+				const base = this.scoreFields(tokens, {
+					title: tokenize(name),
+					aliases: [],
+					description: [],
+				});
+				if (base > 0) scored.push({ item: { type: "uncreated", name }, score: base });
 			}
 		}
 
 		scored.sort((a, b) => b.score - a.score);
 
-		return scored.slice(0, this.settings.maxResults).map((s) => s.item);
+		// Relevance floor: drop the long tail of weak matches
+		const floor = (scored[0]?.score ?? 0) * SCORE_FLOOR_RATIO;
+		return scored
+			.filter((s) => s.score >= floor)
+			.slice(0, this.settings.maxResults)
+			.map((s) => s.item);
+	}
+
+	/**
+	 * Sum, over query tokens, of the best field weight that token matches.
+	 * Every token must match somewhere (AND), otherwise the file is excluded.
+	 */
+	private scoreFields(
+		tokens: string[],
+		f: IndexedFields
+	): number {
+		if (tokens.length === 0) return 0;
+		let total = 0;
+		for (const t of tokens) {
+			let best = 0;
+			if (matchesTokens(t, f.title)) best = FIELD_WEIGHT.title;
+			else if (matchesTokens(t, f.aliases)) best = FIELD_WEIGHT.aliases;
+			else if (matchesTokens(t, f.description)) best = FIELD_WEIGHT.description;
+			if (best === 0) return 0;
+			total += best;
+		}
+		return total;
 	}
 
 	/** Resolve the text to insert inside [[...]] for a suggestion. */

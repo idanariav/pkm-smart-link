@@ -37,6 +37,11 @@ export default class SmartLinkPlugin extends Plugin {
 		});
 	}
 
+	/** Eval hook: ranked result labels for a query (see eval/run_eval.py). */
+	search(query: string, collection = ""): string[] {
+		return this.suggest?.search(query, collection) ?? [];
+	}
+
 	async loadSettings() {
 		const loaded = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
