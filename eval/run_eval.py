@@ -6,12 +6,15 @@ import argparse, json, os, subprocess
 ap = argparse.ArgumentParser()
 ap.add_argument("--k", type=int, default=10)
 ap.add_argument("--save"); ap.add_argument("--compare")
+ap.add_argument("--collection", default="claims", help="collection filter, as in the modal (default: claims)")
+ap.add_argument("--tuning", default="{}", help="JSON of Tuning overrides, e.g. '{\"expandFactor\":0}'")
+ap.add_argument("--quiet", action="store_true")
 a = ap.parse_args()
 here = os.path.dirname(os.path.abspath(__file__))
 cases = json.load(open(os.path.join(here, "queries.json")))
 
 def search(q):
-    code = f"JSON.stringify(app.plugins.plugins['pkm-smart-link'].search({json.dumps(q)}))"
+    code = f"JSON.stringify(app.plugins.plugins['pkm-smart-link'].search({json.dumps(q)}, {json.dumps(a.collection)}, {a.tuning}))"
     r = subprocess.run(["obsidian", "eval", f"code={code}"], capture_output=True, text=True)
     line = next(l for l in r.stdout.splitlines() if l.startswith("=>"))
     return json.loads(line[2:].strip())
@@ -34,8 +37,8 @@ summary = {"k": a.k, "recall": avg("recall"), "precision": avg("precision"),
            "blind_recall": avg("blind_recall"), "mrr": sum(1 / r["first_hit"] for r in rows if r["first_hit"]) / len(rows),
            "avg_returned": avg("returned")}
 base = json.load(open(a.compare))["summary"] if a.compare else None
-print(f"{'query':22} {'ret':>4} {'R@k':>5} {'P@k':>5} {'blindR':>6} {'1st':>4}")
-for r in rows:
+if not a.quiet: print(f"{'query':22} {'ret':>4} {'R@k':>5} {'P@k':>5} {'blindR':>6} {'1st':>4}")
+for r in ([] if a.quiet else rows):
     br = "-" if r["blind_recall"] is None else f"{r['blind_recall']:.2f}"
     print(f"{r['query']:22} {r['returned']:>4} {r['recall']:>5.2f} {r['precision']:>5.2f} {br:>6} {str(r['first_hit'] or '-'):>4}")
 print("\nSUMMARY", {k: round(v, 3) for k, v in summary.items()})

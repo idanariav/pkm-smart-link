@@ -1,4 +1,5 @@
 import { App, TFile, CachedMetadata } from "obsidian";
+import { stemmer } from "stemmer";
 import { SmartLinkSettings } from "./settings";
 import { getCollection } from "./constants";
 
@@ -6,29 +7,56 @@ export type SuggestionItem =
 	| { type: "file"; file: TFile }
 	| { type: "uncreated"; name: string };
 
-interface IndexedFields {
-	title: string[];
-	aliases: string[];
-	description: string[];
+/** Lowercased words plus their Porter stems, kept in parallel so exact words can outrank stem-only matches. */
+interface Words {
+	raw: string[];
+	stem: string[];
 }
 
-const FIELD_WEIGHT = { title: 3, aliases: 2, description: 1 };
-const BACKLINK_WEIGHT = 0.15;
-const SCORE_FLOOR_RATIO = 0.4;
-const COLLECTION_BOOST: Record<string, number> = { concepts: 1.2, maps: 1.2 };
+interface IndexedFields {
+	title: Words;
+	aliases: Words;
+	description: Words;
+}
 
-const tokenize = (text: string): string[] =>
-	text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+export interface Tuning {
+	fieldWeight: { title: number; aliases: number; description: number };
+	backlinkWeight: number;
+	/** Drop results scoring below this fraction of the top score (0 = keep all). */
+	scoreFloorRatio: number;
+	/** Pull in notes linked to matching concepts/maps (0 = off), as a fraction of the seed's score. */
+	expandFactor: number;
+	collectionBoost: Record<string, number>;
+}
 
-/** Crude stem: words longer than 5 chars compare on their first 5 letters. */
-const stem = (w: string): string => (w.length > 5 ? w.slice(0, 5) : w);
+export const DEFAULT_TUNING: Tuning = {
+	fieldWeight: { title: 3, aliases: 2, description: 1 },
+	backlinkWeight: 0.15,
+	scoreFloorRatio: 0.4,
+	expandFactor: 0.6,
+	collectionBoost: { concepts: 1.2, maps: 1.2 },
+};
 
-/** True if query token matches a word by prefix, or by shared stem for tokens >= 4 chars. */
-function matchesTokens(token: string, words: string[]): boolean {
-	const ts = stem(token);
-	return words.some(
-		(w) => w.startsWith(token) || (token.length >= 4 && w.length >= 4 && stem(w) === ts)
-	);
+const HUB_COLLECTIONS = new Set(["concepts", "maps"]);
+
+const tokenize = (text: string): Words => {
+	const raw = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+	return { raw, stem: raw.map(stemmer) };
+};
+
+/** How well one query word matches a field: exact word > prefix (partial typing) > shared stem. */
+const EXACT = 1;
+const PREFIX = 0.85;
+const STEM = 0.5;
+function matchQuality(raw: string, stem: string, words: Words): number {
+	let best = 0;
+	for (let i = 0; i < words.raw.length; i++) {
+		const w = words.raw[i];
+		if (w === raw) return EXACT;
+		if (raw.length >= 3 && w.startsWith(raw)) best = Math.max(best, PREFIX);
+		else if (words.stem[i] === stem) best = Math.max(best, STEM);
+	}
+	return best;
 }
 
 /**
@@ -42,6 +70,8 @@ export class LinkEngine {
 	private allFiles: TFile[] = [];
 	private uncreatedLinks: string[] = [];
 	private backlinkCounts: Map<string, number> = new Map();
+	private neighbors: Map<string, Set<string>> = new Map();
+	private filesByPath: Map<string, TFile> = new Map();
 
 	constructor(app: App, settings: SmartLinkSettings) {
 		this.app = app;
@@ -68,6 +98,20 @@ export class LinkEngine {
 					targetPath,
 					(this.backlinkCounts.get(targetPath) ?? 0) + 1
 				);
+			}
+		}
+
+		// Undirected link graph over resolved links, used for query expansion
+		this.neighbors.clear();
+		this.filesByPath = new Map(this.allFiles.map((f) => [f.path, f]));
+		const addEdge = (a: string, b: string) => {
+			if (!this.neighbors.has(a)) this.neighbors.set(a, new Set());
+			this.neighbors.get(a)!.add(b);
+		};
+		for (const [src, links] of Object.entries(resolved)) {
+			for (const dst of Object.keys(links)) {
+				addEdge(src, dst);
+				addEdge(dst, src);
 			}
 		}
 
@@ -101,7 +145,11 @@ export class LinkEngine {
 		return this.backlinkCounts.get(file.path) ?? 0;
 	}
 
-	getSuggestions(query: string, activeCollection: string): SuggestionItem[] {
+	getSuggestions(
+		query: string,
+		activeCollection: string,
+		tuning: Tuning = DEFAULT_TUNING
+	): SuggestionItem[] {
 		let candidates = [...this.allFiles];
 
 		// Filter by active collection
@@ -136,29 +184,24 @@ export class LinkEngine {
 		}
 
 		const tokens = tokenize(query);
+		if (tokens.raw.length === 0) return [];
 		const scored: { item: SuggestionItem; score: number }[] = [];
 
 		for (const file of candidates) {
-			const fields = this.index.get(file);
-			if (!fields) continue;
-			const base = this.scoreFields(tokens, fields);
-			if (base <= 0) continue;
-			const backlinkBoost = 1 + Math.log1p(this.getBacklinkCount(file)) * BACKLINK_WEIGHT;
-			const collectionBoost = COLLECTION_BOOST[getCollection(file.path)] ?? 1;
-			scored.push({
-				item: { type: "file", file },
-				score: base * backlinkBoost * collectionBoost,
-			});
+			const score = this.scoreFile(file, tokens, tuning);
+			if (score > 0) scored.push({ item: { type: "file", file }, score });
 		}
+
+		if (tuning.expandFactor > 0) this.expandViaHubs(scored, candidates, tokens, tuning);
 
 		// Uncreated links have only a name: score them as a title-only note
 		if (this.settings.showUncreatedLinks) {
 			for (const name of this.uncreatedLinks) {
 				const base = this.scoreFields(tokens, {
 					title: tokenize(name),
-					aliases: [],
-					description: [],
-				});
+					aliases: { raw: [], stem: [] },
+					description: { raw: [], stem: [] },
+				}, tuning.fieldWeight);
 				if (base > 0) scored.push({ item: { type: "uncreated", name }, score: base });
 			}
 		}
@@ -166,7 +209,7 @@ export class LinkEngine {
 		scored.sort((a, b) => b.score - a.score);
 
 		// Relevance floor: drop the long tail of weak matches
-		const floor = (scored[0]?.score ?? 0) * SCORE_FLOOR_RATIO;
+		const floor = (scored[0]?.score ?? 0) * tuning.scoreFloorRatio;
 		return scored
 			.filter((s) => s.score >= floor)
 			.slice(0, this.settings.maxResults)
@@ -174,20 +217,64 @@ export class LinkEngine {
 	}
 
 	/**
+	 * Graph expansion: a concept/map that matches the query pulls in the notes it
+	 * links to (and that link to it) at a discount, so "innovation" also surfaces
+	 * the claims under the "Creative Ideation and Innovation" concept.
+	 */
+	private expandViaHubs(
+		scored: { item: SuggestionItem; score: number }[],
+		candidates: TFile[],
+		tokens: Words,
+		tuning: Tuning
+	): void {
+		const allowed = new Set(candidates.map((f) => f.path));
+		const direct = new Set<string>();
+		for (const s of scored) if (s.item.type === "file") direct.add(s.item.file.path);
+
+		// Hubs seed the expansion even when the collection filter hides them from results
+		const added = new Map<string, number>();
+		for (const hub of this.allFiles) {
+			if (!HUB_COLLECTIONS.has(getCollection(hub.path))) continue;
+			const seedScore = this.scoreFile(hub, tokens, tuning);
+			if (seedScore <= 0) continue;
+			for (const n of this.neighbors.get(hub.path) ?? []) {
+				if (direct.has(n) || !allowed.has(n)) continue;
+				const score = seedScore * tuning.expandFactor;
+				if (score > (added.get(n) ?? 0)) added.set(n, score);
+			}
+		}
+		for (const [path, score] of added) {
+			const file = this.filesByPath.get(path);
+			if (file) scored.push({ item: { type: "file", file }, score });
+		}
+	}
+
+	/** Weighted field score for one file, boosted by backlinks and collection. 0 = no match. */
+	private scoreFile(file: TFile, tokens: Words, tuning: Tuning): number {
+		const fields = this.index.get(file);
+		if (!fields) return 0;
+		const base = this.scoreFields(tokens, fields, tuning.fieldWeight);
+		if (base <= 0) return 0;
+		const backlinkBoost = 1 + Math.log1p(this.getBacklinkCount(file)) * tuning.backlinkWeight;
+		const collectionBoost = tuning.collectionBoost[getCollection(file.path)] ?? 1;
+		return base * backlinkBoost * collectionBoost;
+	}
+
+	/**
 	 * Sum, over query tokens, of the best field weight that token matches.
 	 * Every token must match somewhere (AND), otherwise the file is excluded.
 	 */
-	private scoreFields(
-		tokens: string[],
-		f: IndexedFields
-	): number {
-		if (tokens.length === 0) return 0;
+	private scoreFields(tokens: Words, f: IndexedFields, weight: Tuning["fieldWeight"]): number {
+		if (tokens.raw.length === 0) return 0;
 		let total = 0;
-		for (const t of tokens) {
-			let best = 0;
-			if (matchesTokens(t, f.title)) best = FIELD_WEIGHT.title;
-			else if (matchesTokens(t, f.aliases)) best = FIELD_WEIGHT.aliases;
-			else if (matchesTokens(t, f.description)) best = FIELD_WEIGHT.description;
+		for (let i = 0; i < tokens.raw.length; i++) {
+			const r = tokens.raw[i];
+			const st = tokens.stem[i];
+			const best = Math.max(
+				weight.title * matchQuality(r, st, f.title),
+				weight.aliases * matchQuality(r, st, f.aliases),
+				weight.description * matchQuality(r, st, f.description)
+			);
 			if (best === 0) return 0;
 			total += best;
 		}

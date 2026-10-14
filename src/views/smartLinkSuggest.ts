@@ -8,7 +8,7 @@ import {
 	TFile,
 } from "obsidian";
 import { SmartLinkSettings } from "../settings";
-import { LinkEngine, SuggestionItem } from "../linkEngine";
+import { DEFAULT_TUNING, LinkEngine, SuggestionItem, Tuning } from "../linkEngine";
 
 /**
  * Inline `[[` autocomplete. Mirrors the SmartLink modal's results, anchored at
@@ -34,9 +34,9 @@ export class SmartLinkSuggest extends EditorSuggest<SuggestionItem> {
 	}
 
 	/** Ranked result labels for a query. Used by eval/run_eval.py via `obsidian eval`. */
-	search(query: string, collection = ""): string[] {
+	search(query: string, collection = "", tuning: Partial<Tuning> = {}): string[] {
 		return this.engine
-			.getSuggestions(query, collection)
+			.getSuggestions(query, collection, { ...DEFAULT_TUNING, ...tuning })
 			.map((i) => (i.type === "file" ? i.file.basename : i.name));
 	}
 

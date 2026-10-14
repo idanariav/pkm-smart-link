@@ -1,39 +1,39 @@
 {
  "summary": {
   "k": 10,
-  "recall": 0.019047619047619046,
-  "precision": 0.013333333333333334,
-  "blind_recall": 0.0,
-  "mrr": 0.04599619382228078,
-  "avg_returned": 42.666666666666664
+  "recall": 0.20892496392496393,
+  "precision": 0.24666666666666667,
+  "blind_recall": 0.009523809523809523,
+  "mrr": 0.6444444444444444,
+  "avg_returned": 26.466666666666665
  },
  "rows": [
   {
    "query": "innovation",
    "returned": 50,
-   "recall": 0.14285714285714285,
-   "precision": 0.1,
+   "recall": 0.36363636363636365,
+   "precision": 0.4,
    "blind_recall": 0.0,
-   "first_hit": 6,
-   "found_any_rank": 1
+   "first_hit": 1,
+   "found_any_rank": 5
   },
   {
    "query": "creativity",
-   "returned": 50,
-   "recall": 0.0,
-   "precision": 0.0,
+   "returned": 30,
+   "recall": 0.5,
+   "precision": 0.7,
    "blind_recall": 0.0,
-   "first_hit": 11,
-   "found_any_rank": 2
+   "first_hit": 1,
+   "found_any_rank": 7
   },
   {
    "query": "procrastination",
-   "returned": 50,
-   "recall": 0.0,
-   "precision": 0.0,
+   "returned": 8,
+   "recall": 0.125,
+   "precision": 0.1,
    "blind_recall": 0.0,
-   "first_hit": null,
-   "found_any_rank": 0
+   "first_hit": 1,
+   "found_any_rank": 1
   },
   {
    "query": "routine",
@@ -46,25 +46,25 @@
   },
   {
    "query": "burnout",
-   "returned": 50,
-   "recall": 0.0,
-   "precision": 0.0,
+   "returned": 31,
+   "recall": 0.2,
+   "precision": 0.2,
    "blind_recall": 0.0,
-   "first_hit": null,
-   "found_any_rank": 0
+   "first_hit": 1,
+   "found_any_rank": 2
   },
   {
    "query": "focus",
    "returned": 50,
-   "recall": 0.0,
-   "precision": 0.0,
+   "recall": 0.13333333333333333,
+   "precision": 0.2,
    "blind_recall": 0.0,
-   "first_hit": 23,
-   "found_any_rank": 2
+   "first_hit": 3,
+   "found_any_rank": 11
   },
   {
    "query": "arrogance",
-   "returned": 50,
+   "returned": 38,
    "recall": 0.0,
    "precision": 0.0,
    "blind_recall": 0.0,
@@ -74,29 +74,29 @@
   {
    "query": "resilience",
    "returned": 50,
-   "recall": 0.14285714285714285,
-   "precision": 0.1,
+   "recall": 0.4666666666666667,
+   "precision": 0.7,
    "blind_recall": 0.0,
-   "first_hit": 4,
-   "found_any_rank": 1
+   "first_hit": 1,
+   "found_any_rank": 8
   },
   {
    "query": "groupthink",
-   "returned": 11,
-   "recall": 0.0,
-   "precision": 0.0,
-   "blind_recall": 0.0,
-   "first_hit": null,
-   "found_any_rank": 0
+   "returned": 4,
+   "recall": 0.1111111111111111,
+   "precision": 0.1,
+   "blind_recall": 0.14285714285714285,
+   "first_hit": 3,
+   "found_any_rank": 1
   },
   {
    "query": "friendship",
-   "returned": 50,
-   "recall": 0.0,
-   "precision": 0.0,
+   "returned": 6,
+   "recall": 0.125,
+   "precision": 0.1,
    "blind_recall": 0.0,
-   "first_hit": null,
-   "found_any_rank": 0
+   "first_hit": 1,
+   "found_any_rank": 1
   },
   {
    "query": "chance",
@@ -109,25 +109,25 @@
   },
   {
    "query": "productivity",
-   "returned": 46,
-   "recall": 0.0,
-   "precision": 0.0,
+   "returned": 10,
+   "recall": 0.42857142857142855,
+   "precision": 0.6,
    "blind_recall": 0.0,
-   "first_hit": 18,
-   "found_any_rank": 1
+   "first_hit": 1,
+   "found_any_rank": 6
   },
   {
    "query": "feedback",
-   "returned": 38,
-   "recall": 0.0,
-   "precision": 0.0,
+   "returned": 11,
+   "recall": 0.5555555555555556,
+   "precision": 0.5,
    "blind_recall": 0.0,
-   "first_hit": 12,
-   "found_any_rank": 1
+   "first_hit": 1,
+   "found_any_rank": 5
   },
   {
    "query": "resistance to change",
-   "returned": 5,
+   "returned": 1,
    "recall": 0.0,
    "precision": 0.0,
    "blind_recall": 0.0,
@@ -136,12 +136,12 @@
   },
   {
    "query": "perfectionism",
-   "returned": 40,
-   "recall": 0.0,
-   "precision": 0.0,
+   "returned": 8,
+   "recall": 0.125,
+   "precision": 0.1,
    "blind_recall": 0.0,
-   "first_hit": null,
-   "found_any_rank": 0
+   "first_hit": 1,
+   "found_any_rank": 1
   }
  ]
 }

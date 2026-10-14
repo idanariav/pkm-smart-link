@@ -2,6 +2,7 @@ import { Plugin, Editor, debounce } from "obsidian";
 import { SmartLinkSettings, DEFAULT_SETTINGS } from "./settings";
 import { SmartLinkSettingTab } from "./settingsTab";
 import { SmartLinkModal } from "./views/smartLinkModal";
+import { Tuning } from "./linkEngine";
 import { SmartLinkSuggest } from "./views/smartLinkSuggest";
 
 export default class SmartLinkPlugin extends Plugin {
@@ -38,8 +39,8 @@ export default class SmartLinkPlugin extends Plugin {
 	}
 
 	/** Eval hook: ranked result labels for a query (see eval/run_eval.py). */
-	search(query: string, collection = ""): string[] {
-		return this.suggest?.search(query, collection) ?? [];
+	search(query: string, collection = "", tuning: Partial<Tuning> = {}): string[] {
+		return this.suggest?.search(query, collection, tuning) ?? [];
 	}
 
 	async loadSettings() {
