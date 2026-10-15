@@ -9,9 +9,10 @@ ap.add_argument("--save"); ap.add_argument("--compare")
 ap.add_argument("--collection", default="claims", help="collection filter, as in the modal (default: claims)")
 ap.add_argument("--tuning", default="{}", help="JSON of Tuning overrides, e.g. '{\"expandFactor\":0}'")
 ap.add_argument("--quiet", action="store_true")
+ap.add_argument("--set", default="queries.json", help="query set file in eval/ (queries.json or nouns.json)")
 a = ap.parse_args()
 here = os.path.dirname(os.path.abspath(__file__))
-cases = json.load(open(os.path.join(here, "queries.json")))
+cases = json.load(open(os.path.join(here, a.set)))
 
 def search(q):
     code = f"JSON.stringify(app.plugins.plugins['pkm-smart-link'].search({json.dumps(q)}, {json.dumps(a.collection)}, {a.tuning}))"

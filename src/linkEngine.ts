@@ -2,6 +2,7 @@ import { App, TFile, CachedMetadata } from "obsidian";
 import { stemmer } from "stemmer";
 import { SmartLinkSettings } from "./settings";
 import { getCollection } from "./constants";
+import { sharedVectors } from "./vectors";
 
 export type SuggestionItem =
 	| { type: "file"; file: TFile }
@@ -27,6 +28,12 @@ export interface Tuning {
 	/** Pull in notes linked to matching concepts/maps (0 = off), as a fraction of the seed's score. */
 	expandFactor: number;
 	collectionBoost: Record<string, number>;
+	/** Weight of the semantic ranking in rank fusion with the lexical one (0 = off). */
+	vectorWeight: number;
+	/** Semantic candidates kept: the K most similar to the query... */
+	vectorTopK: number;
+	/** ...whose similarity is at least this fraction of the best one. */
+	vectorMinRatio: number;
 }
 
 export const DEFAULT_TUNING: Tuning = {
@@ -35,7 +42,12 @@ export const DEFAULT_TUNING: Tuning = {
 	scoreFloorRatio: 0.4,
 	expandFactor: 0.6,
 	collectionBoost: { concepts: 1.2, maps: 1.2 },
+	vectorWeight: 0.6,
+	vectorTopK: 10,
+	vectorMinRatio: 0,
 };
+
+const RRF_K = 60;
 
 const HUB_COLLECTIONS = new Set(["concepts", "maps"]);
 
@@ -72,10 +84,21 @@ export class LinkEngine {
 	private backlinkCounts: Map<string, number> = new Map();
 	private neighbors: Map<string, Set<string>> = new Map();
 	private filesByPath: Map<string, TFile> = new Map();
+	private vectors = sharedVectors;
 
 	constructor(app: App, settings: SmartLinkSettings) {
 		this.app = app;
 		this.settings = settings;
+	}
+
+	/** Load/refresh the precomputed semantic vectors. Safe to call repeatedly; no-op if the file is unchanged. */
+	async loadVectors(): Promise<void> {
+		if (!this.settings.useVectors) return;
+		try {
+			await this.vectors.load(this.app, this.settings.vectorsPath);
+		} catch (e) {
+			console.warn("Smart Link: could not load vectors", e);
+		}
 	}
 
 	/** Build the composite search index and uncreated-links list. Call once per open. */
@@ -210,10 +233,57 @@ export class LinkEngine {
 
 		// Relevance floor: drop the long tail of weak matches
 		const floor = (scored[0]?.score ?? 0) * tuning.scoreFloorRatio;
-		return scored
-			.filter((s) => s.score >= floor)
-			.slice(0, this.settings.maxResults)
+		const lexical = scored.filter((s) => s.score >= floor);
+
+		const ranked = this.fuseWithVectors(query, candidates, lexical, tuning);
+		return ranked.slice(0, this.settings.maxResults);
+	}
+
+	/**
+	 * Reciprocal-rank fusion of the lexical ranking with a semantic one (nearest precomputed vectors to the
+	 * query's word vector), so "burnout" also surfaces notes about exhaustion that never use the word.
+	 * Falls back to the lexical ranking alone when vectors are off, missing, or the query has no known word.
+	 */
+	private fuseWithVectors(
+		query: string,
+		candidates: TFile[],
+		lexical: { item: SuggestionItem }[],
+		tuning: Tuning
+	): SuggestionItem[] {
+		const lexItems = lexical.map((s) => s.item);
+		if (!this.settings.useVectors || tuning.vectorWeight <= 0 || !this.vectors.ready) return lexItems;
+		const q = this.vectors.queryVector(query);
+		if (!q) return lexItems;
+
+		const sims: { item: SuggestionItem; sim: number }[] = [];
+		for (const file of candidates) {
+			const sim = this.vectors.similarity(q, file.path);
+			if (sim !== null) sims.push({ item: { type: "file", file }, sim });
+		}
+		if (this.settings.showUncreatedLinks) {
+			for (const name of this.uncreatedLinks) {
+				const sim = this.vectors.similarity(q, `ghost:${name}`);
+				if (sim !== null) sims.push({ item: { type: "uncreated", name }, sim });
+			}
+		}
+		sims.sort((a, b) => b.sim - a.sim);
+		const best = sims[0]?.sim ?? 0;
+		const semantic = sims
+			.slice(0, tuning.vectorTopK)
+			.filter((s) => s.sim >= best * tuning.vectorMinRatio)
 			.map((s) => s.item);
+
+		const key = (i: SuggestionItem) => (i.type === "file" ? i.file.path : `ghost:${i.name}`);
+		const fused = new Map<string, { item: SuggestionItem; score: number }>();
+		const add = (items: SuggestionItem[], weight: number) =>
+			items.forEach((item, rank) => {
+				const e = fused.get(key(item)) ?? { item, score: 0 };
+				e.score += weight / (RRF_K + rank + 1);
+				fused.set(key(item), e);
+			});
+		add(lexItems, 1);
+		add(semantic, tuning.vectorWeight);
+		return [...fused.values()].sort((a, b) => b.score - a.score).map((e) => e.item);
 	}
 
 	/**

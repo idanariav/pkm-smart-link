@@ -81,6 +81,21 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 					})
 			);
 
+		new Setting(containerEl)
+			.setName("Semantic ranking")
+			.setDesc(
+				"Blend in similarity from precomputed vectors, so related notes surface even without matching words. " +
+					"Vectors are exported on desktop by tools/export-vectors.mjs; without the file this does nothing."
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.useVectors)
+					.onChange(async (value) => {
+						this.plugin.settings.useVectors = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		containerEl.createEl("h3", { text: "Visible Collections" });
 		containerEl.createEl("p", { text: "Check to show collections in the filter pills" });
 

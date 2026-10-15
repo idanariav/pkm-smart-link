@@ -28,7 +28,7 @@ __export(main_exports, {
   default: () => SmartLinkPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian5 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/settings.ts
 var DEFAULT_SETTINGS = {
@@ -37,7 +37,9 @@ var DEFAULT_SETTINGS = {
   defaultCollection: "",
   showUncreatedLinks: true,
   hideImageLinks: true,
-  triggerPrefix: "s["
+  triggerPrefix: "s[",
+  useVectors: true,
+  vectorsPath: "Scaffolding/Embeddings/smart-link-vectors"
 };
 
 // src/settingsTab.ts
@@ -111,6 +113,14 @@ var SmartLinkSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
+    new import_obsidian.Setting(containerEl).setName("Semantic ranking").setDesc(
+      "Blend in similarity from precomputed vectors, so related notes surface even without matching words. Vectors are exported on desktop by tools/export-vectors.mjs; without the file this does nothing."
+    ).addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.useVectors).onChange(async (value) => {
+        this.plugin.settings.useVectors = value;
+        await this.plugin.saveSettings();
+      })
+    );
     containerEl.createEl("h3", { text: "Visible Collections" });
     containerEl.createEl("p", { text: "Check to show collections in the filter pills" });
     for (const collection of ALL_COLLECTIONS) {
@@ -130,18 +140,263 @@ var SmartLinkSettingTab = class extends import_obsidian.PluginSettingTab {
 };
 
 // src/views/smartLinkModal.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian2 = require("obsidian");
+
+// node_modules/stemmer/index.js
+var step2list = {
+  ational: "ate",
+  tional: "tion",
+  enci: "ence",
+  anci: "ance",
+  izer: "ize",
+  bli: "ble",
+  alli: "al",
+  entli: "ent",
+  eli: "e",
+  ousli: "ous",
+  ization: "ize",
+  ation: "ate",
+  ator: "ate",
+  alism: "al",
+  iveness: "ive",
+  fulness: "ful",
+  ousness: "ous",
+  aliti: "al",
+  iviti: "ive",
+  biliti: "ble",
+  logi: "log"
+};
+var step3list = {
+  icate: "ic",
+  ative: "",
+  alize: "al",
+  iciti: "ic",
+  ical: "ic",
+  ful: "",
+  ness: ""
+};
+var consonant = "[^aeiou]";
+var vowel = "[aeiouy]";
+var consonants = "(" + consonant + "[^aeiouy]*)";
+var vowels = "(" + vowel + "[aeiou]*)";
+var gt0 = new RegExp("^" + consonants + "?" + vowels + consonants);
+var eq1 = new RegExp(
+  "^" + consonants + "?" + vowels + consonants + vowels + "?$"
+);
+var gt1 = new RegExp("^" + consonants + "?(" + vowels + consonants + "){2,}");
+var vowelInStem = new RegExp("^" + consonants + "?" + vowel);
+var consonantLike = new RegExp("^" + consonants + vowel + "[^aeiouwxy]$");
+var sfxLl = /ll$/;
+var sfxE = /^(.+?)e$/;
+var sfxY = /^(.+?)y$/;
+var sfxIon = /^(.+?(s|t))(ion)$/;
+var sfxEdOrIng = /^(.+?)(ed|ing)$/;
+var sfxAtOrBlOrIz = /(at|bl|iz)$/;
+var sfxEED = /^(.+?)eed$/;
+var sfxS = /^.+?[^s]s$/;
+var sfxSsesOrIes = /^.+?(ss|i)es$/;
+var sfxMultiConsonantLike = /([^aeiouylsz])\1$/;
+var step2 = /^(.+?)(ational|tional|enci|anci|izer|bli|alli|entli|eli|ousli|ization|ation|ator|alism|iveness|fulness|ousness|aliti|iviti|biliti|logi)$/;
+var step3 = /^(.+?)(icate|ative|alize|iciti|ical|ful|ness)$/;
+var step4 = /^(.+?)(al|ance|ence|er|ic|able|ible|ant|ement|ment|ent|ou|ism|ate|iti|ous|ive|ize)$/;
+function stemmer(value) {
+  let result = String(value).toLowerCase();
+  if (result.length < 3) {
+    return result;
+  }
+  let firstCharacterWasLowerCaseY = false;
+  if (result.codePointAt(0) === 121) {
+    firstCharacterWasLowerCaseY = true;
+    result = "Y" + result.slice(1);
+  }
+  if (sfxSsesOrIes.test(result)) {
+    result = result.slice(0, -2);
+  } else if (sfxS.test(result)) {
+    result = result.slice(0, -1);
+  }
+  let match;
+  if (match = sfxEED.exec(result)) {
+    if (gt0.test(match[1])) {
+      result = result.slice(0, -1);
+    }
+  } else if ((match = sfxEdOrIng.exec(result)) && vowelInStem.test(match[1])) {
+    result = match[1];
+    if (sfxAtOrBlOrIz.test(result)) {
+      result += "e";
+    } else if (sfxMultiConsonantLike.test(result)) {
+      result = result.slice(0, -1);
+    } else if (consonantLike.test(result)) {
+      result += "e";
+    }
+  }
+  if ((match = sfxY.exec(result)) && vowelInStem.test(match[1])) {
+    result = match[1] + "i";
+  }
+  if ((match = step2.exec(result)) && gt0.test(match[1])) {
+    result = match[1] + step2list[match[2]];
+  }
+  if ((match = step3.exec(result)) && gt0.test(match[1])) {
+    result = match[1] + step3list[match[2]];
+  }
+  if (match = step4.exec(result)) {
+    if (gt1.test(match[1])) {
+      result = match[1];
+    }
+  } else if ((match = sfxIon.exec(result)) && gt1.test(match[1])) {
+    result = match[1];
+  }
+  if ((match = sfxE.exec(result)) && (gt1.test(match[1]) || eq1.test(match[1]) && !consonantLike.test(match[1]))) {
+    result = match[1];
+  }
+  if (sfxLl.test(result) && gt1.test(result)) {
+    result = result.slice(0, -1);
+  }
+  if (firstCharacterWasLowerCaseY) {
+    result = "y" + result.slice(1);
+  }
+  return result;
+}
+
+// src/vectors.ts
+var VectorStore = class {
+  constructor() {
+    this.dim = 0;
+    this.scale = 127;
+    this.itemVecs = new Int8Array(0);
+    this.wordVecs = new Int8Array(0);
+    this.itemIndex = /* @__PURE__ */ new Map();
+    // id -> row
+    this.wordIndex = /* @__PURE__ */ new Map();
+    // word -> row
+    this.stamp = "";
+  }
+  get ready() {
+    return this.itemIndex.size > 0;
+  }
+  /** (Re)load from <basePath>.json/.bin if the files changed; leaves the store empty when they're absent. */
+  async load(app, basePath) {
+    const adapter = app.vault.adapter;
+    const jsonPath = `${basePath}.json`;
+    const binPath = `${basePath}.bin`;
+    if (!await adapter.exists(jsonPath) || !await adapter.exists(binPath)) {
+      this.clear();
+      return;
+    }
+    const stat = await adapter.stat(binPath);
+    const stamp = `${stat == null ? void 0 : stat.mtime}:${stat == null ? void 0 : stat.size}`;
+    if (this.ready && stamp === this.stamp)
+      return;
+    const manifest = JSON.parse(await adapter.read(jsonPath));
+    const bin = new Int8Array(await adapter.readBinary(binPath));
+    const { dim, items, words } = manifest;
+    if (bin.length !== (items.length + words.length) * dim) {
+      console.warn("Smart Link: vectors file doesn't match its manifest, ignoring");
+      this.clear();
+      return;
+    }
+    this.dim = dim;
+    this.scale = manifest.scale;
+    this.itemVecs = bin.subarray(0, items.length * dim);
+    this.wordVecs = bin.subarray(items.length * dim);
+    this.itemIndex = new Map(items.map((it, i) => [it.id.toLowerCase(), i]));
+    this.wordIndex = new Map(words.map((w, i) => [w, i]));
+    this.stamp = stamp;
+  }
+  clear() {
+    this.itemIndex.clear();
+    this.wordIndex.clear();
+    this.stamp = "";
+  }
+  /** Unit vector for the query (mean of its known words), or null if none of its words are in the table. */
+  queryVector(query) {
+    var _a;
+    const sum = new Float32Array(this.dim);
+    let found = 0;
+    for (const w of (_a = query.toLowerCase().match(/[a-z]+/g)) != null ? _a : []) {
+      const row = this.wordIndex.get(w);
+      if (row === void 0)
+        continue;
+      const off = row * this.dim;
+      for (let i = 0; i < this.dim; i++)
+        sum[i] += this.wordVecs[off + i];
+      found++;
+    }
+    if (!found)
+      return null;
+    const norm = Math.hypot(...sum) || 1;
+    for (let i = 0; i < this.dim; i++)
+      sum[i] /= norm;
+    return sum;
+  }
+  /** Cosine similarity between a query vector and an item id (file path or "ghost:<name>"), or null if unknown. */
+  similarity(q, id) {
+    const row = this.itemIndex.get(id.toLowerCase());
+    if (row === void 0)
+      return null;
+    const off = row * this.dim;
+    let dot = 0;
+    for (let i = 0; i < this.dim; i++)
+      dot += q[i] * this.itemVecs[off + i];
+    return dot / this.scale;
+  }
+};
+var sharedVectors = new VectorStore();
 
 // src/linkEngine.ts
-var import_obsidian2 = require("obsidian");
+var DEFAULT_TUNING = {
+  fieldWeight: { title: 3, aliases: 2, description: 1 },
+  backlinkWeight: 0.15,
+  scoreFloorRatio: 0.4,
+  expandFactor: 0.6,
+  collectionBoost: { concepts: 1.2, maps: 1.2 },
+  vectorWeight: 0.6,
+  vectorTopK: 10,
+  vectorMinRatio: 0
+};
+var RRF_K = 60;
+var HUB_COLLECTIONS = /* @__PURE__ */ new Set(["concepts", "maps"]);
+var tokenize = (text) => {
+  var _a;
+  const raw = (_a = text.toLowerCase().match(/[\p{L}\p{N}]+/gu)) != null ? _a : [];
+  return { raw, stem: raw.map(stemmer) };
+};
+var EXACT = 1;
+var PREFIX = 0.85;
+var STEM = 0.5;
+function matchQuality(raw, stem, words) {
+  let best = 0;
+  for (let i = 0; i < words.raw.length; i++) {
+    const w = words.raw[i];
+    if (w === raw)
+      return EXACT;
+    if (raw.length >= 3 && w.startsWith(raw))
+      best = Math.max(best, PREFIX);
+    else if (words.stem[i] === stem)
+      best = Math.max(best, STEM);
+  }
+  return best;
+}
 var LinkEngine = class {
   constructor(app, settings) {
     this.index = /* @__PURE__ */ new Map();
     this.allFiles = [];
     this.uncreatedLinks = [];
     this.backlinkCounts = /* @__PURE__ */ new Map();
+    this.neighbors = /* @__PURE__ */ new Map();
+    this.filesByPath = /* @__PURE__ */ new Map();
+    this.vectors = sharedVectors;
     this.app = app;
     this.settings = settings;
+  }
+  /** Load/refresh the precomputed semantic vectors. Safe to call repeatedly; no-op if the file is unchanged. */
+  async loadVectors() {
+    if (!this.settings.useVectors)
+      return;
+    try {
+      await this.vectors.load(this.app, this.settings.vectorsPath);
+    } catch (e) {
+      console.warn("Smart Link: could not load vectors", e);
+    }
   }
   /** Build the composite search index and uncreated-links list. Call once per open. */
   buildIndex() {
@@ -150,7 +405,7 @@ var LinkEngine = class {
     this.index.clear();
     for (const file of this.allFiles) {
       const cache = this.app.metadataCache.getFileCache(file);
-      this.index.set(file, this.buildCompositeString(file, cache));
+      this.index.set(file, this.buildFields(file, cache));
     }
     this.backlinkCounts.clear();
     const resolved = this.app.metadataCache.resolvedLinks;
@@ -160,6 +415,19 @@ var LinkEngine = class {
           targetPath,
           ((_a = this.backlinkCounts.get(targetPath)) != null ? _a : 0) + 1
         );
+      }
+    }
+    this.neighbors.clear();
+    this.filesByPath = new Map(this.allFiles.map((f) => [f.path, f]));
+    const addEdge = (a, b) => {
+      if (!this.neighbors.has(a))
+        this.neighbors.set(a, /* @__PURE__ */ new Set());
+      this.neighbors.get(a).add(b);
+    };
+    for (const [src, links] of Object.entries(resolved)) {
+      for (const dst of Object.keys(links)) {
+        addEdge(src, dst);
+        addEdge(dst, src);
       }
     }
     this.uncreatedLinks = [];
@@ -177,23 +445,23 @@ var LinkEngine = class {
       this.uncreatedLinks = Array.from(seen).sort();
     }
   }
-  buildCompositeString(file, cache) {
+  buildFields(file, cache) {
     var _a, _b, _c, _d;
     const fm = (_a = cache == null ? void 0 : cache.frontmatter) != null ? _a : {};
-    const parts = [
-      file.basename,
-      String((_b = fm.title) != null ? _b : "").trim(),
-      Array.isArray(fm.aliases) ? fm.aliases.join(" ") : String((_c = fm.aliases) != null ? _c : "").trim(),
-      String((_d = fm.description) != null ? _d : "").trim()
-    ];
-    return parts.filter(Boolean).join(" | ");
+    const aliases = Array.isArray(fm.aliases) ? fm.aliases.join(" ") : String((_b = fm.aliases) != null ? _b : "");
+    const title = [file.basename, String((_c = fm.title) != null ? _c : "")].join(" ");
+    return {
+      title: tokenize(title),
+      aliases: tokenize(aliases),
+      description: tokenize(String((_d = fm.description) != null ? _d : ""))
+    };
   }
   getBacklinkCount(file) {
     var _a;
     return (_a = this.backlinkCounts.get(file.path)) != null ? _a : 0;
   }
-  getSuggestions(query, activeCollection) {
-    var _a;
+  getSuggestions(query, activeCollection, tuning = DEFAULT_TUNING) {
+    var _a, _b;
     let candidates = [...this.allFiles];
     if (activeCollection) {
       candidates = candidates.filter(
@@ -216,25 +484,142 @@ var LinkEngine = class {
       }
       return fileItems;
     }
-    const matcher = (0, import_obsidian2.prepareFuzzySearch)(query);
+    const tokens = tokenize(query);
+    if (tokens.raw.length === 0)
+      return [];
     const scored = [];
     for (const file of candidates) {
-      const composite = (_a = this.index.get(file)) != null ? _a : file.basename;
-      const result = matcher(composite);
-      if (result) {
-        scored.push({ item: { type: "file", file }, score: result.score });
-      }
+      const score = this.scoreFile(file, tokens, tuning);
+      if (score > 0)
+        scored.push({ item: { type: "file", file }, score });
     }
+    if (tuning.expandFactor > 0)
+      this.expandViaHubs(scored, candidates, tokens, tuning);
     if (this.settings.showUncreatedLinks) {
       for (const name of this.uncreatedLinks) {
-        const result = matcher(name);
-        if (result) {
-          scored.push({ item: { type: "uncreated", name }, score: result.score });
-        }
+        const base = this.scoreFields(tokens, {
+          title: tokenize(name),
+          aliases: { raw: [], stem: [] },
+          description: { raw: [], stem: [] }
+        }, tuning.fieldWeight);
+        if (base > 0)
+          scored.push({ item: { type: "uncreated", name }, score: base });
       }
     }
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, this.settings.maxResults).map((s) => s.item);
+    const floor = ((_b = (_a = scored[0]) == null ? void 0 : _a.score) != null ? _b : 0) * tuning.scoreFloorRatio;
+    const lexical = scored.filter((s) => s.score >= floor);
+    const ranked = this.fuseWithVectors(query, candidates, lexical, tuning);
+    return ranked.slice(0, this.settings.maxResults);
+  }
+  /**
+   * Reciprocal-rank fusion of the lexical ranking with a semantic one (nearest precomputed vectors to the
+   * query's word vector), so "burnout" also surfaces notes about exhaustion that never use the word.
+   * Falls back to the lexical ranking alone when vectors are off, missing, or the query has no known word.
+   */
+  fuseWithVectors(query, candidates, lexical, tuning) {
+    var _a, _b;
+    const lexItems = lexical.map((s) => s.item);
+    if (!this.settings.useVectors || tuning.vectorWeight <= 0 || !this.vectors.ready)
+      return lexItems;
+    const q = this.vectors.queryVector(query);
+    if (!q)
+      return lexItems;
+    const sims = [];
+    for (const file of candidates) {
+      const sim = this.vectors.similarity(q, file.path);
+      if (sim !== null)
+        sims.push({ item: { type: "file", file }, sim });
+    }
+    if (this.settings.showUncreatedLinks) {
+      for (const name of this.uncreatedLinks) {
+        const sim = this.vectors.similarity(q, `ghost:${name}`);
+        if (sim !== null)
+          sims.push({ item: { type: "uncreated", name }, sim });
+      }
+    }
+    sims.sort((a, b) => b.sim - a.sim);
+    const best = (_b = (_a = sims[0]) == null ? void 0 : _a.sim) != null ? _b : 0;
+    const semantic = sims.slice(0, tuning.vectorTopK).filter((s) => s.sim >= best * tuning.vectorMinRatio).map((s) => s.item);
+    const key = (i) => i.type === "file" ? i.file.path : `ghost:${i.name}`;
+    const fused = /* @__PURE__ */ new Map();
+    const add = (items, weight) => items.forEach((item, rank) => {
+      var _a2;
+      const e = (_a2 = fused.get(key(item))) != null ? _a2 : { item, score: 0 };
+      e.score += weight / (RRF_K + rank + 1);
+      fused.set(key(item), e);
+    });
+    add(lexItems, 1);
+    add(semantic, tuning.vectorWeight);
+    return [...fused.values()].sort((a, b) => b.score - a.score).map((e) => e.item);
+  }
+  /**
+   * Graph expansion: a concept/map that matches the query pulls in the notes it
+   * links to (and that link to it) at a discount, so "innovation" also surfaces
+   * the claims under the "Creative Ideation and Innovation" concept.
+   */
+  expandViaHubs(scored, candidates, tokens, tuning) {
+    var _a, _b;
+    const allowed = new Set(candidates.map((f) => f.path));
+    const direct = /* @__PURE__ */ new Set();
+    for (const s of scored)
+      if (s.item.type === "file")
+        direct.add(s.item.file.path);
+    const added = /* @__PURE__ */ new Map();
+    for (const hub of this.allFiles) {
+      if (!HUB_COLLECTIONS.has(getCollection(hub.path)))
+        continue;
+      const seedScore = this.scoreFile(hub, tokens, tuning);
+      if (seedScore <= 0)
+        continue;
+      for (const n of (_a = this.neighbors.get(hub.path)) != null ? _a : []) {
+        if (direct.has(n) || !allowed.has(n))
+          continue;
+        const score = seedScore * tuning.expandFactor;
+        if (score > ((_b = added.get(n)) != null ? _b : 0))
+          added.set(n, score);
+      }
+    }
+    for (const [path, score] of added) {
+      const file = this.filesByPath.get(path);
+      if (file)
+        scored.push({ item: { type: "file", file }, score });
+    }
+  }
+  /** Weighted field score for one file, boosted by backlinks and collection. 0 = no match. */
+  scoreFile(file, tokens, tuning) {
+    var _a;
+    const fields = this.index.get(file);
+    if (!fields)
+      return 0;
+    const base = this.scoreFields(tokens, fields, tuning.fieldWeight);
+    if (base <= 0)
+      return 0;
+    const backlinkBoost = 1 + Math.log1p(this.getBacklinkCount(file)) * tuning.backlinkWeight;
+    const collectionBoost = (_a = tuning.collectionBoost[getCollection(file.path)]) != null ? _a : 1;
+    return base * backlinkBoost * collectionBoost;
+  }
+  /**
+   * Sum, over query tokens, of the best field weight that token matches.
+   * Every token must match somewhere (AND), otherwise the file is excluded.
+   */
+  scoreFields(tokens, f, weight) {
+    if (tokens.raw.length === 0)
+      return 0;
+    let total = 0;
+    for (let i = 0; i < tokens.raw.length; i++) {
+      const r = tokens.raw[i];
+      const st = tokens.stem[i];
+      const best = Math.max(
+        weight.title * matchQuality(r, st, f.title),
+        weight.aliases * matchQuality(r, st, f.aliases),
+        weight.description * matchQuality(r, st, f.description)
+      );
+      if (best === 0)
+        return 0;
+      total += best;
+    }
+    return total;
   }
   /** Resolve the text to insert inside [[...]] for a suggestion. */
   getLinkText(item) {
@@ -283,7 +668,7 @@ var LinkEngine = class {
 };
 
 // src/views/smartLinkModal.ts
-var SmartLinkModal = class extends import_obsidian3.SuggestModal {
+var SmartLinkModal = class extends import_obsidian2.SuggestModal {
   constructor(app, editor, settings) {
     super(app);
     this.activeCollection = "";
@@ -295,6 +680,7 @@ var SmartLinkModal = class extends import_obsidian3.SuggestModal {
   }
   onOpen() {
     this.engine.buildIndex();
+    void this.engine.loadVectors();
     this.activeCollection = this.settings.defaultCollection;
     this.pillBar = this.modalEl.createDiv({ cls: "smart-link-pill-bar" });
     this.modalEl.prepend(this.pillBar);
@@ -342,8 +728,8 @@ var SmartLinkModal = class extends import_obsidian3.SuggestModal {
 };
 
 // src/views/smartLinkSuggest.ts
-var import_obsidian4 = require("obsidian");
-var SmartLinkSuggest = class extends import_obsidian4.EditorSuggest {
+var import_obsidian3 = require("obsidian");
+var SmartLinkSuggest = class extends import_obsidian3.EditorSuggest {
   constructor(app, settings) {
     super(app);
     this.settings = settings;
@@ -356,6 +742,11 @@ var SmartLinkSuggest = class extends import_obsidian4.EditorSuggest {
    */
   refreshIndex() {
     this.engine.buildIndex();
+    void this.engine.loadVectors();
+  }
+  /** Ranked result labels for a query. Used by eval/run_eval.py via `obsidian eval`. */
+  search(query, collection = "", tuning = {}) {
+    return this.engine.getSuggestions(query, collection, { ...DEFAULT_TUNING, ...tuning }).map((i) => i.type === "file" ? i.file.basename : i.name);
   }
   onTrigger(cursor, editor, _file) {
     var _a;
@@ -405,7 +796,7 @@ var SmartLinkSuggest = class extends import_obsidian4.EditorSuggest {
 };
 
 // src/main.ts
-var SmartLinkPlugin = class extends import_obsidian5.Plugin {
+var SmartLinkPlugin = class extends import_obsidian4.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -423,7 +814,7 @@ var SmartLinkPlugin = class extends import_obsidian5.Plugin {
     this.registerEvent(
       this.app.metadataCache.on(
         "resolved",
-        (0, import_obsidian5.debounce)(() => {
+        (0, import_obsidian4.debounce)(() => {
           var _a;
           return (_a = this.suggest) == null ? void 0 : _a.refreshIndex();
         }, 2e3, true)
@@ -436,6 +827,11 @@ var SmartLinkPlugin = class extends import_obsidian5.Plugin {
         new SmartLinkModal(this.app, editor, this.settings).open();
       }
     });
+  }
+  /** Eval hook: ranked result labels for a query (see eval/run_eval.py). */
+  search(query, collection = "", tuning = {}) {
+    var _a, _b;
+    return (_b = (_a = this.suggest) == null ? void 0 : _a.search(query, collection, tuning)) != null ? _b : [];
   }
   async loadSettings() {
     const loaded = await this.loadData();

@@ -21,6 +21,7 @@ export class SmartLinkModal extends SuggestModal<SuggestionItem> {
 	onOpen(): void {
 		// Build composite search index once
 		this.engine.buildIndex();
+		void this.engine.loadVectors();
 
 		// Set active collection to default (if configured)
 		this.activeCollection = this.settings.defaultCollection;

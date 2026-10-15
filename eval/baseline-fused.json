@@ -1,0 +1,147 @@
+{
+ "summary": {
+  "k": 10,
+  "recall": 0.38036075036075034,
+  "precision": 0.41333333333333333,
+  "blind_recall": 0.1611904761904762,
+  "mrr": 0.7185185185185186,
+  "avg_returned": 10.933333333333334
+ },
+ "rows": [
+  {
+   "query": "innovation",
+   "returned": 16,
+   "recall": 0.6363636363636364,
+   "precision": 0.7,
+   "blind_recall": 0.42857142857142855,
+   "first_hit": 1,
+   "found_any_rank": 8
+  },
+  {
+   "query": "creativity",
+   "returned": 15,
+   "recall": 0.5714285714285714,
+   "precision": 0.8,
+   "blind_recall": 0.0,
+   "first_hit": 1,
+   "found_any_rank": 11
+  },
+  {
+   "query": "procrastination",
+   "returned": 10,
+   "recall": 0.375,
+   "precision": 0.3,
+   "blind_recall": 0.2857142857142857,
+   "first_hit": 1,
+   "found_any_rank": 3
+  },
+  {
+   "query": "routine",
+   "returned": 10,
+   "recall": 0.4,
+   "precision": 0.2,
+   "blind_recall": 0.4,
+   "first_hit": 3,
+   "found_any_rank": 2
+  },
+  {
+   "query": "burnout",
+   "returned": 10,
+   "recall": 0.4,
+   "precision": 0.4,
+   "blind_recall": 0.25,
+   "first_hit": 1,
+   "found_any_rank": 4
+  },
+  {
+   "query": "focus",
+   "returned": 24,
+   "recall": 0.4,
+   "precision": 0.6,
+   "blind_recall": 0.0,
+   "first_hit": 1,
+   "found_any_rank": 11
+  },
+  {
+   "query": "arrogance",
+   "returned": 0,
+   "recall": 0.0,
+   "precision": 0.0,
+   "blind_recall": 0.0,
+   "first_hit": null,
+   "found_any_rank": 0
+  },
+  {
+   "query": "resilience",
+   "returned": 12,
+   "recall": 0.6666666666666666,
+   "precision": 1.0,
+   "blind_recall": 0.375,
+   "first_hit": 1,
+   "found_any_rank": 10
+  },
+  {
+   "query": "groupthink",
+   "returned": 0,
+   "recall": 0.0,
+   "precision": 0.0,
+   "blind_recall": 0.0,
+   "first_hit": null,
+   "found_any_rank": 0
+  },
+  {
+   "query": "friendship",
+   "returned": 10,
+   "recall": 0.375,
+   "precision": 0.3,
+   "blind_recall": 0.2857142857142857,
+   "first_hit": 1,
+   "found_any_rank": 3
+  },
+  {
+   "query": "chance",
+   "returned": 11,
+   "recall": 0.14285714285714285,
+   "precision": 0.1,
+   "blind_recall": 0.14285714285714285,
+   "first_hit": 9,
+   "found_any_rank": 1
+  },
+  {
+   "query": "productivity",
+   "returned": 12,
+   "recall": 0.5714285714285714,
+   "precision": 0.8,
+   "blind_recall": 0.0,
+   "first_hit": 1,
+   "found_any_rank": 8
+  },
+  {
+   "query": "feedback",
+   "returned": 14,
+   "recall": 0.6666666666666666,
+   "precision": 0.6,
+   "blind_recall": 0.25,
+   "first_hit": 1,
+   "found_any_rank": 6
+  },
+  {
+   "query": "resistance to change",
+   "returned": 10,
+   "recall": 0.125,
+   "precision": 0.1,
+   "blind_recall": 0.0,
+   "first_hit": 3,
+   "found_any_rank": 1
+  },
+  {
+   "query": "perfectionism",
+   "returned": 10,
+   "recall": 0.375,
+   "precision": 0.3,
+   "blind_recall": 0.0,
+   "first_hit": 1,
+   "found_any_rank": 3
+  }
+ ]
+}

@@ -4,3 +4,9 @@ dist
 *.js.map
 .env
 .env.local
+
+# Personal draft eval set (vault-specific note titles)
+eval/nouns.json
+eval/build_nouns.py
+eval/queries.json
+eval/build_eval.py

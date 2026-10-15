@@ -31,6 +31,7 @@ export class SmartLinkSuggest extends EditorSuggest<SuggestionItem> {
 	 */
 	refreshIndex(): void {
 		this.engine.buildIndex();
+		void this.engine.loadVectors();
 	}
 
 	/** Ranked result labels for a query. Used by eval/run_eval.py via `obsidian eval`. */
