@@ -362,44 +362,27 @@ export class LinkEngine {
 	}
 
 	/** Render a single suggestion row. Shared by modal and inline popup. */
+	/** Rendered with Obsidian's own suggestion markup (`mod-complex`), so it matches native link suggestions and wraps long titles. */
 	renderItem(item: SuggestionItem, el: HTMLElement): void {
+		el.addClass("mod-complex", "smart-link-result");
+		const content = el.createDiv({ cls: "suggestion-content" });
+		const aux = el.createDiv({ cls: "suggestion-aux" });
+
 		if (item.type === "uncreated") {
 			el.addClass("smart-link-result--uncreated");
-			const topLine = el.createDiv({ cls: "smart-link-result-top" });
-			topLine.createEl("span", { text: item.name, cls: "smart-link-result-title" });
-			topLine.createEl("span", {
-				text: "uncreated",
-				cls: "smart-link-result-badge smart-link-result-badge--uncreated",
-			});
+			content.createDiv({ text: item.name, cls: "suggestion-title" });
+			aux.createSpan({ text: "uncreated", cls: "suggestion-flair" });
 			return;
 		}
 
 		const { file } = item;
+		content.createDiv({ text: file.basename, cls: "suggestion-title" });
+
+		const desc = this.app.metadataCache.getFileCache(file)?.frontmatter?.description;
+		if (desc) content.createDiv({ text: String(desc).slice(0, 100), cls: "suggestion-note" });
+
 		const collection = getCollection(file.path);
-		const backlinks = this.getBacklinkCount(file);
-
-		const topLine = el.createDiv({ cls: "smart-link-result-top" });
-		topLine.createEl("span", { text: file.basename, cls: "smart-link-result-title" });
-
-		if (collection) {
-			topLine.createEl("span", {
-				text: collection,
-				cls: "smart-link-result-badge",
-			});
-		}
-
-		topLine.createEl("span", {
-			text: `↩ ${backlinks}`,
-			cls: "smart-link-result-backlinks",
-		});
-
-		const cache = this.app.metadataCache.getFileCache(file);
-		const desc = cache?.frontmatter?.description;
-		if (desc) {
-			el.createEl("p", {
-				text: String(desc).slice(0, 100),
-				cls: "smart-link-result-snippet",
-			});
-		}
+		if (collection) aux.createSpan({ text: collection, cls: "suggestion-flair" });
+		aux.createSpan({ text: `↩ ${this.getBacklinkCount(file)}`, cls: "smart-link-result-backlinks" });
 	}
 }

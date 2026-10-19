@@ -39,39 +39,19 @@
 	border-color: var(--interactive-accent);
 }
 
-.smart-link-result-top {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 2px;
-}
-
-.smart-link-result-title {
-	font-weight: 600;
-	color: var(--text-normal);
-	flex: 1;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.smart-link-result-badge {
+/* Results use Obsidian's native suggestion markup (mod-complex); only the extras are styled here. */
+.smart-link-result-backlinks {
 	font-size: var(--font-ui-smaller);
-	padding: 2px 8px;
-	border-radius: 8px;
-	background: var(--background-modifier-border);
-	color: var(--text-muted);
+	color: var(--text-faint);
 	white-space: nowrap;
-	flex-shrink: 0;
 }
 
-.smart-link-result-snippet {
+.smart-link-result--uncreated .suggestion-title {
 	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	margin: 2px 0 0 0;
-	line-height: 1.4;
+}
+
+.smart-link-result .suggestion-note {
 	overflow: hidden;
-	text-overflow: ellipsis;
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
@@ -81,14 +61,4 @@
 .smart-link-modal .suggestion-container {
 	flex: 1;
 	overflow-y: auto;
-}
-
-.smart-link-modal .suggestion-item {
-	padding: 8px 12px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.smart-link-modal .suggestion-item:hover,
-.smart-link-modal .suggestion-item.is-selected {
-	background: var(--background-secondary);
 }
