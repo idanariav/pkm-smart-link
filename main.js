@@ -39,7 +39,7 @@ var DEFAULT_SETTINGS = {
   hideImageLinks: true,
   triggerPrefix: "s[",
   useVectors: true,
-  vectorsPath: "Scaffolding/Embeddings/smart-link-vectors"
+  exportDir: "Scaffolding/Embeddings"
 };
 
 // src/settingsTab.ts
@@ -114,7 +114,7 @@ var SmartLinkSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     new import_obsidian.Setting(containerEl).setName("Semantic ranking").setDesc(
-      "Blend in similarity from precomputed vectors, so related notes surface even without matching words. Vectors are exported on desktop by tools/export-vectors.mjs; without the file this does nothing."
+      "Blend in similarity from precomputed vectors, so related notes surface even without matching words. Vectors come from `qmd export` and `qvoid export` (run on desktop) in Scaffolding/Embeddings; without them this does nothing."
     ).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.useVectors).onChange(async (value) => {
         this.plugin.settings.useVectors = value;
@@ -258,67 +258,27 @@ function stemmer(value) {
 }
 
 // src/vectors.ts
-var VectorStore = class {
-  constructor() {
-    this.dim = 0;
-    this.scale = 127;
-    this.itemVecs = new Int8Array(0);
-    this.wordVecs = new Int8Array(0);
-    this.itemIndex = /* @__PURE__ */ new Map();
-    // id -> row
-    this.wordIndex = /* @__PURE__ */ new Map();
-    // word -> row
-    this.stamp = "";
-  }
-  get ready() {
-    return this.itemIndex.size > 0;
-  }
-  /** (Re)load from <basePath>.json/.bin if the files changed; leaves the store empty when they're absent. */
-  async load(app, basePath) {
-    const adapter = app.vault.adapter;
-    const jsonPath = `${basePath}.json`;
-    const binPath = `${basePath}.bin`;
-    if (!await adapter.exists(jsonPath) || !await adapter.exists(binPath)) {
-      this.clear();
-      return;
-    }
-    const stat = await adapter.stat(binPath);
-    const stamp = `${stat == null ? void 0 : stat.mtime}:${stat == null ? void 0 : stat.size}`;
-    if (this.ready && stamp === this.stamp)
-      return;
-    const manifest = JSON.parse(await adapter.read(jsonPath));
-    const bin = new Int8Array(await adapter.readBinary(binPath));
-    const { dim, items, words } = manifest;
-    if (bin.length !== (items.length + words.length) * dim) {
-      console.warn("Smart Link: vectors file doesn't match its manifest, ignoring");
-      this.clear();
-      return;
-    }
+var WORD_RE = /[a-z]{3,20}/g;
+var Space = class {
+  constructor(dim, scale, bin, itemRow, wordRow) {
     this.dim = dim;
-    this.scale = manifest.scale;
-    this.itemVecs = bin.subarray(0, items.length * dim);
-    this.wordVecs = bin.subarray(items.length * dim);
-    this.itemIndex = new Map(items.map((it, i) => [it.id.toLowerCase(), i]));
-    this.wordIndex = new Map(words.map((w, i) => [w, i]));
-    this.stamp = stamp;
-  }
-  clear() {
-    this.itemIndex.clear();
-    this.wordIndex.clear();
-    this.stamp = "";
+    this.scale = scale;
+    this.bin = bin;
+    this.itemRow = itemRow;
+    this.wordRow = wordRow;
   }
   /** Unit vector for the query (mean of its known words), or null if none of its words are in the table. */
   queryVector(query) {
     var _a;
     const sum = new Float32Array(this.dim);
     let found = 0;
-    for (const w of (_a = query.toLowerCase().match(/[a-z]+/g)) != null ? _a : []) {
-      const row = this.wordIndex.get(w);
+    for (const w of (_a = query.toLowerCase().match(WORD_RE)) != null ? _a : []) {
+      const row = this.wordRow.get(w);
       if (row === void 0)
         continue;
       const off = row * this.dim;
       for (let i = 0; i < this.dim; i++)
-        sum[i] += this.wordVecs[off + i];
+        sum[i] += this.bin[off + i];
       found++;
     }
     if (!found)
@@ -328,18 +288,94 @@ var VectorStore = class {
       sum[i] /= norm;
     return sum;
   }
-  /** Cosine similarity between a query vector and an item id (file path or "ghost:<name>"), or null if unknown. */
   similarity(q, id) {
-    const row = this.itemIndex.get(id.toLowerCase());
+    const row = this.itemRow.get(id.toLowerCase());
     if (row === void 0)
       return null;
     const off = row * this.dim;
     let dot = 0;
     for (let i = 0; i < this.dim; i++)
-      dot += q[i] * this.itemVecs[off + i];
+      dot += q[i] * this.bin[off + i];
     return dot / this.scale;
   }
 };
+var GHOST_PREFIX = "ghost:";
+var VectorStore = class {
+  constructor() {
+    this.notes = null;
+    this.ghosts = null;
+    this.stamp = "";
+  }
+  get ready() {
+    return this.notes !== null || this.ghosts !== null;
+  }
+  /** (Re)load from `<exportDir>/qmd` and `<exportDir>/qvoid` if they changed; either may be absent. */
+  async load(app, exportDir) {
+    const adapter = app.vault.adapter;
+    const dirs = { qmd: `${exportDir}/qmd`, qvoid: `${exportDir}/qvoid` };
+    const stats = await Promise.all(Object.values(dirs).map((d) => adapter.stat(`${d}/manifest.json`)));
+    const stamp = stats.map((s) => `${s == null ? void 0 : s.mtime}:${s == null ? void 0 : s.size}`).join("|");
+    if (stamp === this.stamp)
+      return;
+    this.notes = await loadSpace(app, dirs.qmd, (m) => noteRows(m));
+    this.ghosts = await loadSpace(
+      app,
+      dirs.qvoid,
+      (m) => new Map(m.items.map((target, i) => [`${GHOST_PREFIX}${target}`.toLowerCase(), i]))
+    );
+    const complete = [this.notes, this.ghosts].every((space, i) => space !== null || !stats[i]);
+    this.stamp = complete ? stamp : "";
+  }
+  queryVector(query) {
+    var _a, _b, _c, _d;
+    const q = { notes: (_b = (_a = this.notes) == null ? void 0 : _a.queryVector(query)) != null ? _b : null, ghosts: (_d = (_c = this.ghosts) == null ? void 0 : _c.queryVector(query)) != null ? _d : null };
+    return q.notes || q.ghosts ? q : null;
+  }
+  /** Cosine similarity between the query and an item id (file path or "ghost:<name>"), or null if unknown.
+   *  Only compare scores of the same kind (notes with notes, ghosts with ghosts). */
+  similarity(q, id) {
+    const isGhost = id.startsWith(GHOST_PREFIX);
+    const space = isGhost ? this.ghosts : this.notes;
+    const vec = isGhost ? q.ghosts : q.notes;
+    return space && vec ? space.similarity(vec, id) : null;
+  }
+};
+function noteRows(m) {
+  const rows = /* @__PURE__ */ new Map();
+  m.items.forEach((item, i) => {
+    const path = m.docs[item.d].path.toLowerCase();
+    if (item.seq === -1)
+      rows.set(path, i);
+    else if (item.seq === 0 && !rows.has(path))
+      rows.set(path, i);
+  });
+  return rows;
+}
+async function loadSpace(app, dir, itemRows) {
+  var _a;
+  const adapter = app.vault.adapter;
+  const manifestPath = `${dir}/manifest.json`;
+  if (!await adapter.exists(manifestPath))
+    return null;
+  const m = JSON.parse(await adapter.read(manifestPath));
+  const paths = ((_a = m.files) != null ? _a : ["vectors.bin"]).map((f) => `${dir}/${f}`);
+  for (const p of paths)
+    if (!await adapter.exists(p))
+      return null;
+  const parts = await Promise.all(paths.map((p) => adapter.readBinary(p)));
+  const bin = new Int8Array(parts.reduce((n, b) => n + b.byteLength, 0));
+  let off = 0;
+  for (const b of parts) {
+    bin.set(new Int8Array(b), off);
+    off += b.byteLength;
+  }
+  if (m.format !== "pkm-vectors" || m.version !== 1 && m.version !== 2 || bin.length !== (m.items.length + m.words.length) * m.dim) {
+    console.warn(`Smart Link: ${dir} isn't a readable pkm-vectors export, ignoring`);
+    return null;
+  }
+  const wordRow = new Map(m.words.map((w, i) => [w, m.items.length + i]));
+  return new Space(m.dim, m.scale, bin, itemRows(m), wordRow);
+}
 var sharedVectors = new VectorStore();
 
 // src/linkEngine.ts
@@ -393,7 +429,7 @@ var LinkEngine = class {
     if (!this.settings.useVectors)
       return;
     try {
-      await this.vectors.load(this.app, this.settings.vectorsPath);
+      await this.vectors.load(this.app, this.settings.exportDir);
     } catch (e) {
       console.warn("Smart Link: could not load vectors", e);
     }
@@ -525,20 +561,25 @@ var LinkEngine = class {
     const q = this.vectors.queryVector(query);
     if (!q)
       return lexItems;
-    const sims = [];
+    const noteSims = [];
     for (const file of candidates) {
       const sim = this.vectors.similarity(q, file.path);
       if (sim !== null)
-        sims.push({ item: { type: "file", file }, sim });
+        noteSims.push({ item: { type: "file", file }, sim });
     }
+    const ghostSims = [];
     if (this.settings.showUncreatedLinks) {
       for (const name of this.uncreatedLinks) {
         const sim = this.vectors.similarity(q, `ghost:${name}`);
         if (sim !== null)
-          sims.push({ item: { type: "uncreated", name }, sim });
+          ghostSims.push({ item: { type: "uncreated", name }, sim });
       }
     }
-    sims.sort((a, b) => b.sim - a.sim);
+    const relative = (list) => {
+      const top = Math.max(...list.map((s) => s.sim));
+      return list.map((s) => ({ item: s.item, sim: s.sim / top }));
+    };
+    const sims = [...relative(noteSims), ...relative(ghostSims)].sort((a, b) => b.sim - a.sim);
     const best = (_b = (_a = sims[0]) == null ? void 0 : _a.sim) != null ? _b : 0;
     const semantic = sims.slice(0, tuning.vectorTopK).filter((s) => s.sim >= best * tuning.vectorMinRatio).map((s) => s.item);
     const key = (i) => i.type === "file" ? i.file.path : `ghost:${i.name}`;
@@ -629,41 +670,27 @@ var LinkEngine = class {
     ) : item.name;
   }
   /** Render a single suggestion row. Shared by modal and inline popup. */
+  /** Rendered with Obsidian's own suggestion markup (`mod-complex`), so it matches native link suggestions and wraps long titles. */
   renderItem(item, el) {
-    var _a;
+    var _a, _b;
+    el.addClass("mod-complex", "smart-link-result");
+    const content = el.createDiv({ cls: "suggestion-content" });
+    const aux = el.createDiv({ cls: "suggestion-aux" });
     if (item.type === "uncreated") {
       el.addClass("smart-link-result--uncreated");
-      const topLine2 = el.createDiv({ cls: "smart-link-result-top" });
-      topLine2.createEl("span", { text: item.name, cls: "smart-link-result-title" });
-      topLine2.createEl("span", {
-        text: "uncreated",
-        cls: "smart-link-result-badge smart-link-result-badge--uncreated"
-      });
+      content.createDiv({ text: item.name, cls: "suggestion-title" });
+      aux.createSpan({ text: "uncreated", cls: "suggestion-flair" });
       return;
     }
     const { file } = item;
+    content.createDiv({ text: file.basename, cls: "suggestion-title" });
+    const desc = (_b = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter) == null ? void 0 : _b.description;
+    if (desc)
+      content.createDiv({ text: String(desc).slice(0, 100), cls: "suggestion-note" });
     const collection = getCollection(file.path);
-    const backlinks = this.getBacklinkCount(file);
-    const topLine = el.createDiv({ cls: "smart-link-result-top" });
-    topLine.createEl("span", { text: file.basename, cls: "smart-link-result-title" });
-    if (collection) {
-      topLine.createEl("span", {
-        text: collection,
-        cls: "smart-link-result-badge"
-      });
-    }
-    topLine.createEl("span", {
-      text: `\u21A9 ${backlinks}`,
-      cls: "smart-link-result-backlinks"
-    });
-    const cache = this.app.metadataCache.getFileCache(file);
-    const desc = (_a = cache == null ? void 0 : cache.frontmatter) == null ? void 0 : _a.description;
-    if (desc) {
-      el.createEl("p", {
-        text: String(desc).slice(0, 100),
-        cls: "smart-link-result-snippet"
-      });
-    }
+    if (collection)
+      aux.createSpan({ text: collection, cls: "suggestion-flair" });
+    aux.createSpan({ text: `\u21A9 ${this.getBacklinkCount(file)}`, cls: "smart-link-result-backlinks" });
   }
 };
 

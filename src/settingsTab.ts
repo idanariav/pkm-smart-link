@@ -85,7 +85,7 @@ export class SmartLinkSettingTab extends PluginSettingTab {
 			.setName("Semantic ranking")
 			.setDesc(
 				"Blend in similarity from precomputed vectors, so related notes surface even without matching words. " +
-					"Vectors are exported on desktop by tools/export-vectors.mjs; without the file this does nothing."
+					"Vectors come from `qmd export` and `qvoid export` (run on desktop) in Scaffolding/Embeddings; without them this does nothing."
 			)
 			.addToggle((toggle) =>
 				toggle

@@ -25,17 +25,21 @@ A filtered, semantically ranked link insertion plugin for Obsidian. Replaces Obs
 
 ## Semantic vectors
 
-Vectors are built on desktop and read on any device. Without the vectors file the plugin silently falls back to lexical ranking.
+Vectors are built on desktop by the qmd and qvoid tools and read on any device. Without them the plugin silently falls back to lexical ranking.
 
 ```bash
-node tools/export-vectors.mjs   # needs qmd (embeddinggemma) and qvoid on the desktop
+qmd export --out <vault>/Scaffolding/Embeddings/qmd       # notes (embeddinggemma, 512 dims, int8)
+qvoid export --out <vault>/Scaffolding/Embeddings/qvoid   # ghost links (bge-small, 384 dims, int8)
 ```
 
-It writes `Scaffolding/Embeddings/smart-link-vectors.{json,bin}` (about 4 MB, int8, 512 dims; path configurable via `--out`/the `vectorsPath` setting):
-- **Items**: `Content/{Claims,Concepts,Maps}` notes (title + aliases + Description, the same text qmd embeds as a note's profile vector) and genuine-claim ghost links (qvoid's `idea` class)
-- **Words**: about 5k common words (`tools/common-words.txt`) plus every word in those titles. A query becomes a vector by averaging its words' vectors; a query with no known word stays lexical-only
+The plugin reads both from the folder in the `exportDir` setting (default `Scaffolding/Embeddings`). The format is `pkm-vectors` v2 (vectors split into chunk files under 5 MB, for Obsidian Sync; v1 single-file exports are still read); see qmd's `docs/EXPORT.md` and qvoid's `docs/EXPORT.md`.
+- **Notes**: each note's qmd profile vector (title + aliases + description), or its first chunk when it has no aliases/description
+- **Ghost links**: qvoid's embedded targets (its `idea` class)
+- **Words**: each export has its own word table (common English words plus the vault's frequent words). A query becomes one vector per export, the mean of its words' vectors. A query with no known word stays lexical-only
 
-Re-run it after adding notes (it only re-embeds what changed). Notes created on mobile rank lexically until the next export.
+Notes and ghost links come from different models, so each list's similarities are scaled by its own best match before they're merged. With `export.path` / `[export] path` set in the tools' configs, `qmd embed` and `qvoid index`/`embed` re-export automatically. Notes created on mobile rank lexically until the next export.
+
+Switching from the old `tools/export-vectors.mjs` exporter on the eval sets: `queries.json` recall@10 went 0.394 → 0.417 and MRR 0.755 → 0.865; `nouns.json` recall@10 went 0.849 → 0.876, with MRR 0.978 → 0.967.
 
 ## Evaluation
 

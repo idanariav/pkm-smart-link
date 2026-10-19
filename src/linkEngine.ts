@@ -95,7 +95,7 @@ export class LinkEngine {
 	async loadVectors(): Promise<void> {
 		if (!this.settings.useVectors) return;
 		try {
-			await this.vectors.load(this.app, this.settings.vectorsPath);
+			await this.vectors.load(this.app, this.settings.exportDir);
 		} catch (e) {
 			console.warn("Smart Link: could not load vectors", e);
 		}
@@ -255,18 +255,25 @@ export class LinkEngine {
 		const q = this.vectors.queryVector(query);
 		if (!q) return lexItems;
 
-		const sims: { item: SuggestionItem; sim: number }[] = [];
+		const noteSims: { item: SuggestionItem; sim: number }[] = [];
 		for (const file of candidates) {
 			const sim = this.vectors.similarity(q, file.path);
-			if (sim !== null) sims.push({ item: { type: "file", file }, sim });
+			if (sim !== null) noteSims.push({ item: { type: "file", file }, sim });
 		}
+		const ghostSims: { item: SuggestionItem; sim: number }[] = [];
 		if (this.settings.showUncreatedLinks) {
 			for (const name of this.uncreatedLinks) {
 				const sim = this.vectors.similarity(q, `ghost:${name}`);
-				if (sim !== null) sims.push({ item: { type: "uncreated", name }, sim });
+				if (sim !== null) ghostSims.push({ item: { type: "uncreated", name }, sim });
 			}
 		}
-		sims.sort((a, b) => b.sim - a.sim);
+		// Notes and ghost links are scored by different models, so scale each by its own best
+		// match before merging; raw cosines from the two aren't comparable.
+		const relative = (list: { item: SuggestionItem; sim: number }[]) => {
+			const top = Math.max(...list.map((s) => s.sim));
+			return list.map((s) => ({ item: s.item, sim: s.sim / top }));
+		};
+		const sims = [...relative(noteSims), ...relative(ghostSims)].sort((a, b) => b.sim - a.sim);
 		const best = sims[0]?.sim ?? 0;
 		const semantic = sims
 			.slice(0, tuning.vectorTopK)
